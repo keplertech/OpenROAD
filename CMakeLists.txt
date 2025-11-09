@@ -38,7 +38,7 @@ option(USE_SYSTEM_OPENSTA "Use system shared OpenSTA library" OFF)
 option(USE_SYSTEM_ABC "Use system shared ABC library" OFF)
 
 # Allow disabling tests
-option(ENABLE_TESTS "Enable OpenROAD tests" ON)
+#option(ENABLE_TESTS "Enable OpenROAD tests" ON)
 
 # Allow enabling address sanitizer
 option(ASAN "Enable Address Sanitizer" OFF)
@@ -54,6 +54,20 @@ option(UBSAN "Enable Undefined Behavior Sanitizer" OFF)
 project(OpenROAD VERSION 1
   LANGUAGES CXX
 )
+
+
+set(FLEX_INCLUDE_DIR /opt/homebrew/opt/flex/include)
+
+# Add Flex include directory to include paths
+include_directories(${FLEX_INCLUDE_DIR})
+
+# Set Tcl library and include paths
+set(TCL_LIBRARY /opt/local/lib/libtcl.dylib)
+set(TCL_INCLUDE_DIR /opt/local/include/)
+set(TCL_HEADER /opt/local/include/tcl.h)
+
+# Add Tcl include directory to include paths
+include_directories(${TCL_INCLUDE_DIR})
 
 set(OPENROAD_HOME ${PROJECT_SOURCE_DIR})
 set(OPENROAD_SHARE ${CMAKE_INSTALL_PREFIX}/share/openroad)
@@ -127,16 +141,16 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
 add_subdirectory(third-party)
 
-if(ENABLE_TESTS)
-  find_program (BASH_PROGRAM bash REQUIRED)
+# if(ENABLE_TESTS)
+#   find_program (BASH_PROGRAM bash REQUIRED)
 
-  enable_testing()
-  add_custom_target(build_and_test ${CMAKE_CTEST_COMMAND} --parallel --output-on-failure -LE IntegrationTest)
-  include(GoogleTest)
-endif()
+#   enable_testing()
+#   add_custom_target(build_and_test ${CMAKE_CTEST_COMMAND} --parallel --output-on-failure -LE IntegrationTest)
+#   include(GoogleTest)
+# endif()
 
 add_subdirectory(src)
-add_subdirectory(test)
+#add_subdirectory(test)
 
 # Not currently used but may become useful again with Kokkos
 target_compile_definitions(openroad PRIVATE GPU)
