@@ -141,19 +141,18 @@ LayoutViewer::LayoutViewer(
       focus_nets_(focus_nets),
       route_guides_(route_guides),
       net_tracks_(net_tracks),
-      viewer_thread_(this),
-      loading_timer_(new QTimer(this))
+      viewer_thread_(this)
 {
   setMouseTracking(true);
 
   addMenuAndActions();
 
-  loading_timer_->setInterval(300 /*ms*/);
+  loading_timer_.setInterval(300 /*ms*/);
 
   connect(
       &viewer_thread_, &RenderThread::done, this, &LayoutViewer::updatePixmap);
 
-  connect(loading_timer_,
+  connect(&loading_timer_,
           &QTimer::timeout,
           this,
           &LayoutViewer::handleLoadingIndication);
@@ -161,12 +160,15 @@ LayoutViewer::LayoutViewer(
   connect(&search_, &Search::modified, this, &LayoutViewer::fullRepaint);
 
   connect(&search_, &Search::newChip, this, &LayoutViewer::setChip);
+
+  repaint_timer_.setSingleShot(true);
+  repaint_timer_.callOnTimeout(this, &LayoutViewer::fullRepaint);
 }
 
 void LayoutViewer::handleLoadingIndication()
 {
   if (!viewer_thread_.isRendering()) {
-    loading_timer_->stop();
+    loading_timer_.stop();
     return;
   }
 
@@ -176,7 +178,7 @@ void LayoutViewer::handleLoadingIndication()
 void LayoutViewer::setLoadingState()
 {
   loading_indicator_.clear();
-  loading_timer_->start();
+  loading_timer_.start();
 }
 
 void LayoutViewer::setChip(odb::dbChip* chip)
@@ -1896,8 +1898,32 @@ void LayoutViewer::paintEvent(QPaintEvent* event)
       brush.a = 100;
     }
 
-    animate_selection_->selection.highlight(
-        gui_painter, Painter::kHighlight, pen_width, brush);
+    odb::Rect bbox;
+    bool draw_hightlight = true;
+    if (animate_selection_->selection.getBBox(bbox)) {
+      const int size = bbox.maxDXDY();
+
+      const int min_size = highlightSizeLimit();
+
+      if (size < min_size) {
+        draw_hightlight = false;
+
+        const int half_size = min_size / 2.0;
+        const int bloat_by = half_size - size;
+
+        odb::Rect draw_rect;
+        bbox.bloat(bloat_by, draw_rect);
+        gui_painter.setPen(Painter::kHighlight, true, pen_width);
+        gui_painter.setBrush(brush, Painter::Brush::kSolid);
+
+        gui_painter.drawRect(draw_rect, 0, 0);
+      }
+    }
+
+    if (draw_hightlight) {
+      animate_selection_->selection.highlight(
+          gui_painter, Painter::kHighlight, pen_width, brush);
+    }
   }
 
   // draw partial ruler if present
@@ -1933,8 +1959,7 @@ void LayoutViewer::paintEvent(QPaintEvent* event)
 void LayoutViewer::fullRepaint()
 {
   if (command_executing_ && !paused_) {
-    QTimer::singleShot(
-        5 /*ms*/, this, &LayoutViewer::fullRepaint);  // retry later
+    repaint_timer_.start(5 /* ms */);
     return;
   }
 
@@ -2471,6 +2496,11 @@ int LayoutViewer::shapeSizeLimit() const
   }
 
   return nominalViewableResolution();
+}
+
+int LayoutViewer::highlightSizeLimit() const
+{
+  return coarseViewableResolution();
 }
 
 int LayoutViewer::fineViewableResolution() const

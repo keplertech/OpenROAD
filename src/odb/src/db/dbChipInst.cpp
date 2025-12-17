@@ -16,6 +16,7 @@
 #include "dbChipBumpInst.h"
 #include "dbChipRegionInst.h"
 #include "odb/dbTransform.h"
+#include "odb/geom.h"
 // User Code End Includes
 namespace odb {
 template class dbTable<_dbChipInst>;
@@ -25,7 +26,7 @@ bool _dbChipInst::operator==(const _dbChipInst& rhs) const
   if (name_ != rhs.name_) {
     return false;
   }
-  if (loc_ != rhs.loc_) {
+  if (origin_ != rhs.origin_) {
     return false;
   }
   if (master_chip_ != rhs.master_chip_) {
@@ -49,7 +50,7 @@ bool _dbChipInst::operator<(const _dbChipInst& rhs) const
   if (name_ >= rhs.name_) {
     return false;
   }
-  if (loc_ >= rhs.loc_) {
+  if (origin_ >= rhs.origin_) {
     return false;
   }
 
@@ -63,7 +64,7 @@ _dbChipInst::_dbChipInst(_dbDatabase* db)
 dbIStream& operator>>(dbIStream& stream, _dbChipInst& obj)
 {
   stream >> obj.name_;
-  stream >> obj.loc_;
+  stream >> obj.origin_;
   stream >> obj.orient_;
   stream >> obj.master_chip_;
   stream >> obj.parent_chip_;
@@ -77,7 +78,7 @@ dbIStream& operator>>(dbIStream& stream, _dbChipInst& obj)
 dbOStream& operator<<(dbOStream& stream, const _dbChipInst& obj)
 {
   stream << obj.name_;
-  stream << obj.loc_;
+  stream << obj.origin_;
   stream << obj.orient_;
   stream << obj.master_chip_;
   stream << obj.parent_chip_;
@@ -102,26 +103,6 @@ std::string dbChipInst::getName() const
 {
   _dbChipInst* obj = (_dbChipInst*) this;
   return obj->name_;
-}
-
-void dbChipInst::setLoc(const Point3D& loc)
-{
-  _dbChipInst* obj = (_dbChipInst*) this;
-
-  obj->loc_ = loc;
-}
-
-Point3D dbChipInst::getLoc() const
-{
-  _dbChipInst* obj = (_dbChipInst*) this;
-  return obj->loc_;
-}
-
-void dbChipInst::setOrient(dbOrientType3D orient)
-{
-  _dbChipInst* obj = (_dbChipInst*) this;
-
-  obj->orient_ = orient;
 }
 
 dbOrientType3D dbChipInst::getOrient() const
@@ -155,9 +136,33 @@ dbChip* dbChipInst::getParentChip() const
 dbTransform dbChipInst::getTransform() const
 {
   _dbChipInst* obj = (_dbChipInst*) this;
-  // TODO: Add 3d Point handling to the transform
-  return dbTransform(obj->orient_.getOrientType2D(),
-                     Point(obj->loc_.x(), obj->loc_.y()));
+  return dbTransform(obj->orient_, obj->origin_);
+}
+
+void dbChipInst::setOrient(dbOrientType3D orient)
+{
+  _dbChipInst* obj = (_dbChipInst*) this;
+
+  obj->orient_ = orient;
+}
+
+void dbChipInst::setLoc(const Point3D& loc)
+{
+  _dbChipInst* obj = (_dbChipInst*) this;
+  dbChip* chip = getMasterChip();
+  Cuboid cuboid = chip->getCuboid();
+  dbTransform t(getOrient());
+  t.apply(cuboid);
+  const int dx = loc.x() - cuboid.lll().x();
+  const int dy = loc.y() - cuboid.lll().y();
+  const int dz = loc.z() - cuboid.lll().z();
+  cuboid.moveDelta(dx, dy, dz);
+  obj->origin_ = Point3D(dx, dy, dz);
+}
+
+Point3D dbChipInst::getLoc() const
+{
+  return getCuboid().lll();
 }
 
 Rect dbChipInst::getBBox() const
@@ -165,6 +170,13 @@ Rect dbChipInst::getBBox() const
   Rect box = getMasterChip()->getBBox();
   getTransform().apply(box);
   return box;
+}
+
+Cuboid dbChipInst::getCuboid() const
+{
+  Cuboid cuboid = getMasterChip()->getCuboid();
+  getTransform().apply(cuboid);
+  return cuboid;
 }
 
 dbSet<dbChipRegionInst> dbChipInst::getRegions() const
@@ -229,7 +241,7 @@ dbChipInst* dbChipInst::create(dbChip* parent_chip,
 
   // Initialize the chip instance
   chipinst->name_ = name;
-  chipinst->loc_ = Point3D(0, 0, 0);  // Default location
+  chipinst->origin_ = Point3D(0, 0, 0);  // Default location
   chipinst->master_chip_ = _master->getOID();
   chipinst->parent_chip_ = _parent->getOID();
 

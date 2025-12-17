@@ -31,6 +31,7 @@
 #include "db/obj/frVia.h"
 #include "db/tech/frViaDef.h"
 #include "dr/FlexDR.h"
+#include "dr/FlexMazeTypes.h"
 #include "frBaseTypes.h"
 #include "frDesign.h"
 #include "frProfileTask.h"
@@ -1906,9 +1907,6 @@ void FlexDRWorker::route_queue_main(std::queue<RouteQueueEntry>& rerouteQueue)
       }
       // init
       net->setModified(true);
-      if (net->getFrNet()) {
-        net->getFrNet()->setModified(true);
-      }
       net->setNumMarkers(0);
       if (graphics_) {
         graphics_->startNet(net);

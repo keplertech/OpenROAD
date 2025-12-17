@@ -14,6 +14,7 @@
 
 #include "boost/geometry/geometry.hpp"
 #include "boost/polygon/polygon.hpp"
+#include "db/gcObj/gcShape.h"
 #include "db/obj/frBlockObject.h"
 #include "db/obj/frMarker.h"
 #include "frBaseTypes.h"
@@ -21,6 +22,7 @@
 #include "gc/FlexGC_impl.h"
 #include "odb/dbTypes.h"
 #include "odb/geom.h"
+#include "odb/isotropy.h"
 
 using odb::dbTechLayerType;
 
@@ -3873,7 +3875,8 @@ void FlexGCWorker::Impl::patchMetalShape_minStep()
           } else {
             continue;
           }
-          if (enc_box.getDir() == 1 && markerBBox.yMin() == enc_box.yMin()
+          if (enc_box.getDir() == odb::horizontal
+              && markerBBox.yMin() == enc_box.yMin()
               && markerBBox.yMax() == enc_box.yMax()) {
             int bloating_dist = std::max(0, min_step_length - markerBBox.dx());
             if (markerBBox.xMin() >= enc_box.xMin()
@@ -3885,7 +3888,7 @@ void FlexGCWorker::Impl::patchMetalShape_minStep()
             } else {
               continue;
             }
-          } else if (enc_box.getDir() == 0
+          } else if (enc_box.getDir() == odb::vertical
                      && markerBBox.xMin() == enc_box.xMin()
                      && markerBBox.xMax() == enc_box.xMax()) {
             int bloating_dist = std::max(0, min_step_length - markerBBox.dy());

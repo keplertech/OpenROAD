@@ -147,6 +147,12 @@ set_use_cugr(bool use_cugr)
 }
 
 void
+set_skip_large_fanout(int skip_large_fanout)
+{
+  getGlobalRouter()->setSkipLargeFanoutNets(skip_large_fanout);
+}
+
+void
 global_route(bool start_incremental, bool end_incremental)
 {
   getGlobalRouter()->globalRoute(true, start_incremental, end_incremental);
@@ -261,6 +267,33 @@ void read_segments(const char* file_name)
 void write_pin_locations(const char* file_name)
 {
   getGlobalRouter()->writePinLocations(file_name);
+}
+
+odb::dbObject* iterm_to_object(odb::dbITerm* iterm)
+{
+  return (odb::dbObject*) iterm;
+}
+
+odb::dbObject* bterm_to_object(odb::dbBTerm* bterm)
+{
+  return (odb::dbObject*) bterm;
+}
+
+float estimate_path_resistance(odb::dbObject* pin1,
+                                 odb::dbObject* pin2,
+                                 bool verbose = false)
+{
+  return getGlobalRouter()->estimatePathResistance(pin1, pin2, verbose);
+}
+
+float estimate_path_resistance(odb::dbObject* pin1,
+				 odb::dbObject* pin2,
+				 odb::dbTechLayer* layer1,
+				 odb::dbTechLayer* layer2,
+				 bool verbose = false)
+{
+  return getGlobalRouter()->estimatePathResistance(
+    pin1, pin2, layer1, layer2, verbose);
 }
 
 } // namespace

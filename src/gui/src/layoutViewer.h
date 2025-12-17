@@ -301,6 +301,7 @@ class LayoutViewer : public QWidget
   int coarseViewableResolution() const;
   int instanceSizeLimit() const;
   int shapeSizeLimit() const;
+  int highlightSizeLimit() const;
 
   std::vector<std::tuple<odb::dbObject*, odb::Rect, int>> getRowRects(
       odb::dbBlock* block,
@@ -429,7 +430,8 @@ class LayoutViewer : public QWidget
   RenderThread viewer_thread_;
   QPixmap draw_pixmap_;
   QRect draw_pixmap_bounds_;
-  QTimer* loading_timer_;
+  QTimer loading_timer_;
+  QTimer repaint_timer_;
   std::string loading_indicator_;
 
   static constexpr qreal kZoomScaleFactor = 1.2;

@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "grt/GRoute.h"
 #include "grt/GlobalRouter.h"
 #include "odb/db.h"
 #include "odb/dbShape.h"
@@ -23,7 +24,8 @@ Net::Net(odb::dbNet* net, bool has_wires)
       has_wires_(has_wires),
       merged_net_(nullptr),
       is_merged_net_(false),
-      is_dirty_net_(false)
+      is_dirty_net_(false),
+      is_clk_(false)
 {
 }
 

@@ -23,9 +23,11 @@ or_integration_tests(
     est_rc2
     est_rc3
     est_rc4
+    estimate_path_resistance
     gcd
     gcd_cugr
     gcd_flute
+    increase_capacity1
     inst_pin_out_of_die
     invalid_pin_placement
     invalid_routing_layer
@@ -76,6 +78,7 @@ or_integration_tests(
     set_nets_to_route1
     silence
     single_row
+    skip_large_fanout1
     soft_ndr_4w_6s
     top_level_term1
     top_level_term2

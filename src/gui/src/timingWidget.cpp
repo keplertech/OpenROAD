@@ -131,7 +131,7 @@ void TimingWidget::setColumnDisplayMenu()
     action->setCheckable(true);
     action->setChecked(true);
 
-    connect(action, &QAction::triggered, this, [=](bool checked) {
+    connect(action, &QAction::triggered, this, [=, this](bool checked) {
       hideColumn(column_index, checked);
     });
 
@@ -520,7 +520,7 @@ QString TimingWidget::generateClosestMatchString(CommandType type,
 
   command += focus_view_ == setup_timing_table_view_ ? " -path_delay max"
                                                      : " -path_delay min";
-  command += " -fields {capacitance slew input_pins nets fanout} -format "
+  command += " -fields {capacitance slew input_pins net fanout} -format "
             "full_clock_expanded";
 
   return command;
