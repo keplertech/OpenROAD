@@ -7,9 +7,9 @@
 #include <cstdint>
 #include <cstring>
 
+#include "dbCore.h"
 #include "dbDatabase.h"
 #include "dbTable.h"
-#include "dbTable.hpp"
 #include "dbTechLayer.h"
 #include "odb/db.h"
 namespace odb {
@@ -18,6 +18,7 @@ template class dbTable<_dbTechLayerWrongDirSpacingRule>;
 bool _dbTechLayerWrongDirSpacingRule::operator==(
     const _dbTechLayerWrongDirSpacingRule& rhs) const
 {
+  // NOLINTBEGIN(readability-simplify-boolean-expr)
   if (flags_.noneol_valid != rhs.flags_.noneol_valid) {
     return false;
   }
@@ -38,6 +39,7 @@ bool _dbTechLayerWrongDirSpacingRule::operator==(
   }
 
   return true;
+  // NOLINTEND(readability-simplify-boolean-expr)
 }
 
 bool _dbTechLayerWrongDirSpacingRule::operator<(
@@ -202,7 +204,7 @@ dbTechLayerWrongDirSpacingRule* dbTechLayerWrongDirSpacingRule::create(
 dbTechLayerWrongDirSpacingRule*
 dbTechLayerWrongDirSpacingRule::getTechLayerWrongDirSpacingRule(
     dbTechLayer* inly,
-    uint dbid)
+    uint32_t dbid)
 {
   _dbTechLayer* layer = (_dbTechLayer*) inly;
   return (dbTechLayerWrongDirSpacingRule*)

@@ -2,7 +2,6 @@
 // Copyright (c) 2020-2025, The OpenROAD Authors
 
 #include <cassert>
-#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -12,7 +11,10 @@
 #include <vector>
 
 // Generator Code Begin Cpp
+#include <cstdlib>
+
 #include "dbBlock.h"
+#include "dbCore.h"
 #include "dbDatabase.h"
 #include "dbHashTable.hpp"
 #include "dbJournal.h"
@@ -20,16 +22,20 @@
 #include "dbModInst.h"
 #include "dbModule.h"
 #include "dbTable.h"
-#include "dbTable.hpp"
 #include "odb/db.h"
 // User Code Begin Includes
+#include <cstdint>
+
 #include "dbCommon.h"
 #include "dbGroup.h"
 #include "dbModBTerm.h"
 #include "dbModNet.h"
 #include "dbModuleModInstItr.h"
 #include "dbModuleModInstModITermItr.h"
+#include "dbSwapMasterSanityChecker.h"
 #include "odb/dbBlockCallBackObj.h"
+#include "odb/dbObject.h"
+#include "odb/dbSet.h"
 #include "utl/Logger.h"
 // User Code End Includes
 namespace odb {
@@ -37,6 +43,7 @@ template class dbTable<_dbModInst>;
 
 bool _dbModInst::operator==(const _dbModInst& rhs) const
 {
+  // NOLINTBEGIN(readability-simplify-boolean-expr)
   if (name_ != rhs.name_) {
     return false;
   }
@@ -63,6 +70,7 @@ bool _dbModInst::operator==(const _dbModInst& rhs) const
   }
 
   return true;
+  // NOLINTEND(readability-simplify-boolean-expr)
 }
 
 bool _dbModInst::operator<(const _dbModInst& rhs) const
@@ -100,15 +108,8 @@ dbIStream& operator>>(dbIStream& stream, _dbModInst& obj)
   // User Code Begin >>
   dbBlock* block = (dbBlock*) (obj.getOwner());
   _dbDatabase* db_ = (_dbDatabase*) (block->getDataBase());
-  if (db_->isSchema(db_schema_update_hierarchy)) {
+  if (db_->isSchema(kSchemaUpdateHierarchy)) {
     stream >> obj.moditerms_;
-  }
-  if (db_->isSchema(db_schema_db_remove_hash)) {
-    _dbBlock* block = (_dbBlock*) (((dbDatabase*) db_)->getChip()->getBlock());
-    _dbModule* module = block->module_tbl_->getPtr(obj.parent_);
-    if (obj.name_) {
-      module->modinst_hash_[obj.name_] = obj.getId();
-    }
   }
   // User Code End >>
   return stream;
@@ -135,9 +136,16 @@ void _dbModInst::collectMemInfo(MemInfo& info)
   info.size += sizeof(*this);
 
   // User Code Begin collectMemInfo
-  info.children_["name"].add(name_);
-  info.children_["moditerm_hash"].add(moditerm_hash_);
+  info.children["name"].add(name_);
+  info.children["moditerm_hash"].add(moditerm_hash_);
   // User Code End collectMemInfo
+}
+
+_dbModInst::~_dbModInst()
+{
+  if (name_) {
+    free((void*) name_);
+  }
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -265,9 +273,9 @@ void dbModInst::destroy(dbModInst* modinst)
   _master->mod_inst_.clear();
 
   // unlink from parent start
-  uint id = _modinst->getOID();
+  uint32_t id = _modinst->getOID();
   _dbModInst* prev = nullptr;
-  uint cur = _module->modinsts_;
+  uint32_t cur = _module->modinsts_;
   while (cur) {
     _dbModInst* c = _block->modinst_tbl_->getPtr(cur);
     if (cur == id) {
@@ -328,7 +336,7 @@ dbSet<dbModITerm> dbModInst::getModITerms()
   return dbSet<dbModITerm>(_mod_inst, _block->module_modinstmoditerm_itr_);
 }
 
-dbModInst* dbModInst::getModInst(dbBlock* block_, uint dbid_)
+dbModInst* dbModInst::getModInst(dbBlock* block_, uint32_t dbid_)
 {
   _dbBlock* block = (_dbBlock*) block_;
   return (dbModInst*) block->modinst_tbl_->getPtr(dbid_);
@@ -437,7 +445,7 @@ void dbModInst::removeUnusedPortsAndPins()
     dbModBTerm* mod_bterm = module->findModBTerm(mod_iterm->getName());
     assert(mod_bterm != nullptr);
 
-    if (busmodbterms.count(mod_bterm) > 0) {
+    if (busmodbterms.contains(mod_bterm)) {
       continue;  // Do not remove bus ports
     }
 
@@ -622,8 +630,8 @@ dbModInst* dbModInst::swapMaster(dbModule* new_module)
 
     // If the flat net has external connection (external instance or BTerm),
     // it should be inserted into modbterm_name_flat_net_map.
-    bool has_external_connection = (flat_net->getBTerms().empty() == false);
-    if (has_external_connection == false) {
+    bool has_external_connection = (!flat_net->getBTerms().empty());
+    if (!has_external_connection) {
       for (dbITerm* iterm : flat_net->getITerms()) {
         if (!old_module->containsDbInst(iterm->getInst())) {
           has_external_connection = true;
@@ -768,6 +776,11 @@ dbModInst* dbModInst::swapMaster(dbModule* new_module)
       std::ofstream outfile(filename);
       child_block->debugPrintContent(outfile);
     }
+  }
+
+  if (logger->debugCheck(utl::ODB, "replace_design_check_sanity", 1)) {
+    dbSwapMasterSanityChecker checker(new_mod_inst, new_module, logger);
+    checker.run();
   }
 
   return new_mod_inst;

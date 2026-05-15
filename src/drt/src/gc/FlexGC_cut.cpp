@@ -12,8 +12,10 @@
 #include "db/gcObj/gcShape.h"
 #include "db/obj/frMarker.h"
 #include "db/obj/frVia.h"
+#include "db/tech/frConstraint.h"
 #include "frBaseTypes.h"
 #include "frProfileTask.h"
+#include "gc/FlexGC.h"
 #include "gc/FlexGC_impl.h"
 #include "global.h"
 #include "odb/db.h"
@@ -109,10 +111,7 @@ bool FlexGCWorker::Impl::checkLef58CutSpacingTbl_helper(
                                    isSide2,
                                    odb::dbTechLayerCutSpacingTableDefRule::MIN);
     reqSpcSqr *= reqSpcSqr;
-    if (distSquare < reqSpcSqr) {
-      return true;
-    }
-    return false;
+    return distSquare < reqSpcSqr;
   }
   if (class1 == class2 && !dbRule->isLayerValid()) {
     bool exactlyAligned = false;
@@ -644,10 +643,8 @@ void FlexGCWorker::Impl::checkMetalWidthViaTable()
 {
   if (targetNet_) {
     // layer --> net --> polygon --> maxrect
-    for (int i = std::max((frLayerNum) (getTech()->getBottomLayerNum()),
-                          minLayerNum_);
-         i
-         <= std::min((frLayerNum) (getTech()->getTopLayerNum()), maxLayerNum_);
+    for (int i = std::max(getTech()->getBottomLayerNum(), minLayerNum_);
+         i <= std::min(getTech()->getTopLayerNum(), maxLayerNum_);
          i++) {
       auto currLayer = getTech()->getLayer(i);
       if (currLayer->getType() != dbTechLayerType::CUT) {
@@ -661,10 +658,8 @@ void FlexGCWorker::Impl::checkMetalWidthViaTable()
     }
   } else {
     // layer --> net --> polygon --> maxrect
-    for (int i = std::max((frLayerNum) (getTech()->getBottomLayerNum()),
-                          minLayerNum_);
-         i
-         <= std::min((frLayerNum) (getTech()->getTopLayerNum()), maxLayerNum_);
+    for (int i = std::max(getTech()->getBottomLayerNum(), minLayerNum_);
+         i <= std::min(getTech()->getTopLayerNum(), maxLayerNum_);
          i++) {
       auto currLayer = getTech()->getLayer(i);
       if (currLayer->getType() != dbTechLayerType::CUT) {

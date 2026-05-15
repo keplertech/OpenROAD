@@ -18,7 +18,9 @@
 #include <utility>
 #include <vector>
 
+#include "CtsOptions.h"
 #include "db_sta/dbSta.hh"
+#include "est/EstimateParasitics.h"
 #include "odb/db.h"
 #include "odb/dbSet.h"
 #include "rsz/Resizer.hh"
@@ -26,16 +28,17 @@
 #include "sta/Liberty.hh"
 #include "sta/LibertyClass.hh"
 #include "sta/MinMax.hh"
-#include "sta/PathAnalysisPt.hh"
 #include "sta/PowerClass.hh"
 #include "sta/Sdc.hh"
 #include "sta/Search.hh"
+#include "sta/SearchClass.hh"
+#include "sta/StringUtil.hh"
 #include "sta/TableModel.hh"
 #include "sta/TimingArc.hh"
 #include "sta/TimingModel.hh"
 #include "sta/Transition.hh"
-#include "sta/Units.hh"
 #include "utl/Logger.h"
+#include "utl/algorithms.h"
 
 namespace cts {
 
@@ -44,13 +47,11 @@ using utl::CTS;
 TechChar::TechChar(CtsOptions* options,
                    odb::dbDatabase* db,
                    sta::dbSta* sta,
-                   rsz::Resizer* resizer,
                    est::EstimateParasitics* estimate_parasitics,
                    sta::dbNetwork* db_network,
-                   Logger* logger)
+                   utl::Logger* logger)
     : options_(options),
       db_(db),
-      resizer_(resizer),
       estimate_parasitics_(estimate_parasitics),
       openSta_(sta),
       openStaChar_(nullptr),
@@ -97,24 +98,34 @@ void TechChar::compileLut(const std::vector<TechChar::ResultData>& lutSols)
     if (!(lutLine.isPureWire)) {
       // Goes through the topology of the wiresegment and defines the buffer
       // locations and masters.
+      int wl2FirstBuffer
+          = std::round(std::stod(lutLine.topology[0]) * (double) length);
+      int lastWl = 0;
       int maxIndex = 0;
       if (lutLine.topology.size() % 2 == 0) {
         maxIndex = lutLine.topology.size();
       } else {
         maxIndex = lutLine.topology.size() - 1;
+        lastWl = std::round(std::stod(lutLine.topology[maxIndex])
+                            * (double) length);
       }
       for (int topologyIndex = 0; topologyIndex < maxIndex; topologyIndex++) {
         const std::string topologyS = lutLine.topology[topologyIndex];
         // Each buffered topology always has a wire segment followed by a
         // buffer.
-        if (std::find(masterNames_.begin(), masterNames_.end(), topologyS)
-            == masterNames_.end()) {
+        if (std::ranges::find(masterNames_, topologyS) == masterNames_.end()) {
           // Is a number (i.e. a wire segment).
           segment.addBuffer(std::stod(topologyS));
         } else {
           segment.addBufferMaster(topologyS);
         }
       }
+      segment.setLastWl(lastWl);
+      segment.setWl2FirstBuffer(wl2FirstBuffer);
+    } else {
+      int wl = std::round(std::stod(lutLine.topology[0]) * (double) length);
+      segment.setLastWl(wl);
+      segment.setWl2FirstBuffer(wl);
     }
   }
 
@@ -312,14 +323,15 @@ void TechChar::printCharacterization() const
   logger_->report("wireSegmentUnit = {}", options_->getWireSegmentUnit());
 
   logger_->report(
-      "\nidx length load outSlew power delay inCap inSlew pureWire bufLoc");
+      "\n   idx length load outSlew power delay inCap inSlew pureWire Wl2First "
+      "LastWl bufLoc");
   forEachWireSegment([&](unsigned idx, const WireSegment& segment) {
     std::string buffer_locations;
     for (unsigned idx = 0; idx < segment.getNumBuffers(); ++idx) {
       buffer_locations += std::to_string(segment.getBufferLocation(idx)) + " ";
     }
 
-    logger_->report("{:6} {:2} {:2} {:2} {:.2e} {:4} {:2} {:2} {} {}",
+    logger_->report("{:6} {:4} {:4} {:4} {:.4e} {:4} {:4} {:4} {} {:4} {:4} {}",
                     idx,
                     (unsigned) segment.getLength(),
                     (unsigned) segment.getLoad(),
@@ -329,6 +341,8 @@ void TechChar::printCharacterization() const
                     (unsigned) segment.getInputCap(),
                     (unsigned) segment.getInputSlew(),
                     !segment.isBuffered(),
+                    segment.getWl2FirstBuffer(),
+                    segment.getLastWl(),
                     buffer_locations);
   });
 }
@@ -380,6 +394,8 @@ void TechChar::createFakeEntries(unsigned length, unsigned fakeLength)
             const unsigned delay = seg.getDelay();
             const unsigned inputCap = seg.getInputCap();
             const unsigned inputSlew = seg.getInputSlew();
+            const int wl2FirstBuffer = seg.getWl2FirstBuffer();
+            const int lastWl = seg.getLastWl();
 
             WireSegment& fakeSeg = createWireSegment(
                 fakeLength, load, outSlew, power, delay, inputCap, inputSlew);
@@ -388,6 +404,8 @@ void TechChar::createFakeEntries(unsigned length, unsigned fakeLength)
               fakeSeg.addBuffer(seg.getBufferLocation(buf));
               fakeSeg.addBufferMaster(seg.getBufferMaster(buf));
             }
+            fakeSeg.setWl2FirstBuffer(wl2FirstBuffer);
+            fakeSeg.setLastWl(lastWl);
           });
     }
   }
@@ -397,20 +415,22 @@ void TechChar::reportSegment(unsigned key) const
 {
   const WireSegment& seg = getWireSegment(key);
 
-  debugPrint(
-      logger_,
-      CTS,
-      "tech char",
-      1,
-      "    Key: {} inSlew: {} inCap: {} outSlew: {} load: {} length: {} delay: "
-      "{}",
-      key,
-      seg.getInputSlew(),
-      seg.getInputCap(),
-      seg.getOutputSlew(),
-      seg.getLoad(),
-      seg.getLength(),
-      seg.getDelay());
+  debugPrint(logger_,
+             CTS,
+             "tech char",
+             1,
+             "    Key: {} inSlew: {} inCap: {} outSlew: {} load: {} length: {} "
+             "wl2fistyBuf: {} lastWL: {} delay: "
+             "{}",
+             key,
+             seg.getInputSlew(),
+             seg.getInputCap(),
+             seg.getOutputSlew(),
+             seg.getLoad(),
+             seg.getLength(),
+             seg.getWl2FirstBuffer(),
+             seg.getLastWl(),
+             seg.getDelay());
 
   for (unsigned idx = 0; idx < seg.getNumBuffers(); ++idx) {
     debugPrint(logger_,
@@ -426,7 +446,7 @@ void TechChar::reportSegment(unsigned key) const
 void TechChar::initClockLayerResCap(float dbUnitsPerMicron)
 {
   // Clock RC should be set with set_wire_rc -clock
-  sta::Corner* corner = openSta_->cmdCorner();
+  sta::Scene* corner = openSta_->cmdScene();
 
   // convert from per meter to per dbu
   capPerDBU_ = estimate_parasitics_->wireClkCapacitance(corner) * 1e-6
@@ -721,11 +741,10 @@ void TechChar::trimSortBufferList(std::vector<std::string>& buffers)
   }
 
   // Sort buffers in ascending order of max cap limit
-  std::sort(buffers.begin(),
-            buffers.end(),
-            [this](const std::string& buf1, const std::string& buf2) {
-              return (this->getMaxCapLimit(buf1) < this->getMaxCapLimit(buf2));
-            });
+  std::ranges::sort(
+      buffers, [this](const std::string& buf1, const std::string& buf2) {
+        return (this->getMaxCapLimit(buf1) < this->getMaxCapLimit(buf2));
+      });
 
   // remove close max cap values within 10% of prev neighbor
   if (options_->isBufferListInferred()) {
@@ -787,24 +806,24 @@ void TechChar::collectSlewsLoadsFromTableAxis(sta::LibertyCell* libCell,
         = dynamic_cast<sta::GateTableModel*>(model);
     if (gateModel) {
       const sta::TableModel* delayModel = gateModel->delayModel();
-      sta::FloatSeq* slews = nullptr;
-      sta::FloatSeq* loads = nullptr;
+      const sta::FloatSeq* slews = nullptr;
+      const sta::FloatSeq* loads = nullptr;
       const sta::TableAxis* axis1 = delayModel->axis1();
       if (axis1) {
         if (axis1->variable() == sta::TableAxisVariable::input_net_transition) {
-          slews = axis1->values();
+          slews = &axis1->values();
         } else if (axis1->variable()
                    == sta::TableAxisVariable::total_output_net_capacitance) {
-          loads = axis1->values();
+          loads = &axis1->values();
         }
       }
       const sta::TableAxis* axis2 = delayModel->axis2();
       if (axis2) {
         if (axis2->variable() == sta::TableAxisVariable::input_net_transition) {
-          slews = axis2->values();
+          slews = &axis2->values();
         } else if (axis2->variable()
                    == sta::TableAxisVariable::total_output_net_capacitance) {
-          loads = axis2->values();
+          loads = &axis2->values();
         }
       }
       if (slews) {
@@ -835,12 +854,7 @@ void TechChar::collectSlewsLoadsFromTableAxis(sta::LibertyCell* libCell,
 void TechChar::sortAndUniquify(std::vector<float>& values,
                                const std::string& name)
 {
-  // sort
-  std::sort(values.begin(), values.end());
-
-  // uniquify
-  auto last = std::unique(values.begin(), values.end());
-  values.erase(last, values.end());
+  utl::sort_and_unique(values);
 
   // remove close values within 1% of prev neighbor
   std::vector<float>::iterator iter = values.begin();
@@ -950,7 +964,7 @@ std::vector<TechChar::SolutionData> TechChar::createPatterns(
   odb::dbNet* net = nullptr;
   // clang-format off
   debugPrint(logger_, CTS, "tech char", 1, "*createPatterns for #nodes = {}"
-             " #topologies = {}", setupWirelength, numberOfNodes, numberOfTopologies);
+             " #topologies = {}", numberOfNodes, numberOfTopologies);
   // clang-format on
   // For each possible topology...
   for (unsigned solutionCounterInt = 0; solutionCounterInt < numberOfTopologies;
@@ -1051,9 +1065,6 @@ std::vector<TechChar::SolutionData> TechChar::createPatterns(
     tmp << "OUT";
     debugPrint(logger_, CTS, "tech char", 1, tmp.str());
     topology.outPort = outPortPin;
-    if (isPureWire) {
-      topology.instVector.push_back(nullptr);
-    }
     topology.isPureWire = isPureWire;
     topology.netVector.push_back(net);
     topology.nodesWithoutBufVector.push_back(nodesWithoutBuf);
@@ -1073,12 +1084,17 @@ void TechChar::createStaInstance()
   // characterization. Creates the new instance based on the charcterization
   // block.
   openStaChar_ = openSta_->makeBlockSta(charBlock_);
+
+  // Create the same scenes in the same order, this will make liberty indices
+  // line up and allow sharing the library between the two dbSta instances
+  sta::StringSeq scene_names;
+  for (auto scene : openSta_->scenes()) {
+    scene_names.push_back(scene->name().c_str());
+  }
+  openStaChar_->makeScenes(scene_names);
+
   // Gets the corner and other analysis attributes from the new instance.
-  charCorner_ = openStaChar_->cmdCorner();
-  sta::PathAPIndex path_ap_index
-      = charCorner_->findPathAnalysisPt(sta::MinMax::max())->index();
-  sta::Corners* corners = openStaChar_->search()->corners();
-  charPathAnalysis_ = corners->findPathAnalysisPt(path_ap_index);
+  charCorner_ = openStaChar_->cmdScene();
 }
 
 void TechChar::setParasitics(
@@ -1200,14 +1216,15 @@ TechChar::ResultData TechChar::computeTopologyResults(
       = std::round(incap / charCapStepSize_) * charCapStepSize_;
   results.totalcap = totalcap;
   // Computations for delay.
-  const float pinArrival = openStaChar_->vertexArrival(
-      outPinVert, sta::RiseFall::fall(), charPathAnalysis_);
+  sta::SceneSeq charCorner1({charCorner_});
+  const float pinArrival = openStaChar_->arrival(
+      outPinVert, sta::RiseFallBoth::fall(), charCorner1, sta::MinMax::max());
   results.pinArrival = pinArrival;
   // Computations for output slew. Avg of rise and fall slew.
-  const float pinRise = openStaChar_->vertexSlew(
-      outPinVert, sta::RiseFall::rise(), sta::MinMax::max());
-  const float pinFall = openStaChar_->vertexSlew(
-      outPinVert, sta::RiseFall::fall(), sta::MinMax::max());
+  const float pinRise = openStaChar_->slew(
+      outPinVert, sta::RiseFallBoth::rise(), charCorner1, sta::MinMax::max());
+  const float pinFall = openStaChar_->slew(
+      outPinVert, sta::RiseFallBoth::fall(), charCorner1, sta::MinMax::max());
   const float pinSlew = std::round((pinRise + pinFall) / 2 / charSlewStepSize_)
                         * charSlewStepSize_;
   results.pinSlew = pinSlew;
@@ -1234,10 +1251,8 @@ void TechChar::updateBufferTopologiesOld(TechChar::SolutionData& solution)
 
   while (!done) {
     // Gets the iterator to the beggining of the masterNames_ set.
-    std::vector<std::string>::iterator masterItr
-        = std::find(masterNames_.begin(),
-                    masterNames_.end(),
-                    solution.instVector[index]->getMaster()->getName());
+    std::vector<std::string>::iterator masterItr = std::ranges::find(
+        masterNames_, solution.instVector[index]->getMaster()->getName());
     if (masterItr == lastMasterItr) {
       // If the iterator can't increment past the final iterator...
       // change the current buf master to the first lib cell and try to go to
@@ -1260,7 +1275,7 @@ void TechChar::updateBufferTopologiesOld(TechChar::SolutionData& solution)
         debugPrint(logger_, CTS, "tech char", 1, "  topo:{} topoIdx:{}",
                    topologyS, topologyIndex);
         // clang-format on
-        if (!(std::find(masterNames_.begin(), masterNames_.end(), topologyS)
+        if (!(std::ranges::find(masterNames_, topologyS)
               == masterNames_.end())) {
           if (topologyCounter == index) {
             solution.topologyDescriptor[topologyIndex] = *firstMasterItr;
@@ -1282,7 +1297,7 @@ void TechChar::updateBufferTopologiesOld(TechChar::SolutionData& solution)
       odb::dbInst* inst = solution.instVector[index];
       inst->swapMaster(newBufMaster);
       // clang-format off
-      --masterItr; 
+      --masterItr;
       debugPrint(logger_, CTS, "tech char", 1, "updateBufferTopologies swap "
                  "from {} to {}, index:{}",
                  *(masterItr), newBufMaster->getName(), index);
@@ -1298,7 +1313,7 @@ void TechChar::updateBufferTopologiesOld(TechChar::SolutionData& solution)
         debugPrint(logger_, CTS, "tech char", 1, "  topo:{} topoIdx:{}",
                    topologyS, topologyIndex);
         // clang-format on
-        if (!(std::find(masterNames_.begin(), masterNames_.end(), topologyS)
+        if (!(std::ranges::find(masterNames_, topologyS)
               == masterNames_.end())) {
           if (topologyCounter == index) {
             solution.topologyDescriptor[topologyIndex] = masterString;
@@ -1377,7 +1392,7 @@ std::vector<size_t> TechChar::getCurrConfig(const SolutionData& solution)
 size_t TechChar::cellNameToID(const std::string& masterName)
 {
   std::vector<std::string>::iterator masterIter
-      = std::find(masterNames_.begin(), masterNames_.end(), masterName);
+      = std::ranges::find(masterNames_, masterName);
   return std::distance(masterNames_.begin(), masterIter);
 }
 
@@ -1442,8 +1457,7 @@ void TechChar::swapTopologyBuffer(SolutionData& solution,
     debugPrint(logger_, CTS, "tech char", 1, "***topo:{} topoIdx:{}",
                topologyS, topologyIndex);
     // clang-format on
-    if (!(std::find(masterNames_.begin(), masterNames_.end(), topologyS)
-          == masterNames_.end())) {
+    if (!(std::ranges::find(masterNames_, topologyS) == masterNames_.end())) {
       if (topologyCounter == nodeIndex) {
         solution.topologyDescriptor[topologyIndex] = newMasterName;
         // clang-format off
@@ -1478,6 +1492,7 @@ std::vector<TechChar::ResultData> TechChar::characterizationPostProcess()
   unsigned maxResultCapacitance = 0;
   unsigned minResultSlew = std::numeric_limits<unsigned>::max();
   unsigned maxResultSlew = 0;
+
   std::vector<ResultData> convertedSolutions;
   for (ResultData solution : selectedSolutions) {
     if (solution.pinSlew <= options_->getMaxCharSlew()) {
@@ -1515,8 +1530,7 @@ std::vector<TechChar::ResultData> TechChar::characterizationPostProcess()
            topologyIndex++) {
         std::string topologyS = solution.topology[topologyIndex];
         // Normalizes the strings that represents the topology too.
-        if (std::find(masterNames_.begin(), masterNames_.end(), topologyS)
-            == masterNames_.end()) {
+        if (std::ranges::find(masterNames_, topologyS) == masterNames_.end()) {
           // Is a number (i.e. a wire segment).
           topologyResult.push_back(
               std::to_string(std::stod(topologyS) / solution.wirelength));
@@ -1530,6 +1544,7 @@ std::vector<TechChar::ResultData> TechChar::characterizationPostProcess()
       convertedSolutions.push_back(convertedResult);
     }
   }
+
   // Sets the min and max values and returns the result vector.
   minSlew_ = minResultSlew;
   maxSlew_ = maxResultSlew;
@@ -1631,10 +1646,10 @@ void TechChar::create()
                  masterNames_.size(), solution.instVector.size());
       // clang-format on
       // For each possible buffer combination (different sizes).
-      unsigned buffersUpdate
+      unsigned buffersCombinations
           = getBufferingCombo(masterNames_.size(), solution.instVector.size());
 
-      if (buffersUpdate == 0) {
+      if (buffersCombinations == 0) {
         continue;
       }
 
@@ -1697,12 +1712,13 @@ void TechChar::create()
           }
         }
         // If the solution is not a pure-wire, update the buffer topologies.
-        if (!solution.isPureWire) {
+        if (!solution.isPureWire && buffersCombinations > 1) {
           updateBufferTopologies(solution);
         }
-        // For pure-wire solution buffersUpdate == 1, so it only runs once.
-        buffersUpdate--;
-      } while (buffersUpdate != 0);
+        // For pure-wire solution buffersCombinations == 1, so it only runs
+        // once.
+        buffersCombinations--;
+      } while (buffersCombinations != 0);
     }
     openStaChar_.reset(nullptr);
   }

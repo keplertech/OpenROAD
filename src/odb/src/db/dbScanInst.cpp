@@ -4,9 +4,11 @@
 // Generator Code Begin Cpp
 #include "dbScanInst.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
+#include "dbCore.h"
 #include "dbDatabase.h"
 #include "dbDft.h"
 #include "dbScanChain.h"
@@ -14,13 +16,19 @@
 #include "dbScanPartition.h"
 #include "dbScanPin.h"
 #include "dbTable.h"
-#include "dbTable.hpp"
 #include "odb/db.h"
+// User Code Begin Includes
+#include <string_view>
+#include <variant>
+
+#include "dbBlock.h"
+// User Code End Includes
 namespace odb {
 template class dbTable<_dbScanInst>;
 
 bool _dbScanInst::operator==(const _dbScanInst& rhs) const
 {
+  // NOLINTBEGIN(readability-simplify-boolean-expr)
   if (bits_ != rhs.bits_) {
     return false;
   }
@@ -44,6 +52,7 @@ bool _dbScanInst::operator==(const _dbScanInst& rhs) const
   }
 
   return true;
+  // NOLINTEND(readability-simplify-boolean-expr)
 }
 
 bool _dbScanInst::operator<(const _dbScanInst& rhs) const
@@ -65,10 +74,10 @@ dbIStream& operator>>(dbIStream& stream, _dbScanInst& obj)
   stream >> obj.inst_;
   stream >> obj.scan_clock_;
   stream >> obj.clock_edge_;
-  if (obj.getDatabase()->isSchema(db_schema_block_owns_scan_insts)) {
+  if (obj.getDatabase()->isSchema(kSchemaBlockOwnsScanInsts)) {
     stream >> obj.next_list_scan_inst_;
   }
-  if (obj.getDatabase()->isSchema(db_schema_block_owns_scan_insts)) {
+  if (obj.getDatabase()->isSchema(kSchemaBlockOwnsScanInsts)) {
     stream >> obj.prev_list_scan_inst_;
   }
   return stream;
@@ -115,7 +124,7 @@ const std::string& dbScanInst::getScanClock() const
 void dbScanInst::setClockEdge(ClockEdge clock_edge)
 {
   _dbScanInst* scan_inst = (_dbScanInst*) this;
-  scan_inst->clock_edge_ = static_cast<uint>(clock_edge);
+  scan_inst->clock_edge_ = static_cast<uint32_t>(clock_edge);
 }
 
 dbScanInst::ClockEdge dbScanInst::getClockEdge() const
@@ -136,13 +145,13 @@ std::string dbScanInst::getClockEdgeString() const
   return "Unknown";
 }
 
-void dbScanInst::setBits(uint bits)
+void dbScanInst::setBits(uint32_t bits)
 {
   _dbScanInst* scan_inst = (_dbScanInst*) this;
   scan_inst->bits_ = bits;
 }
 
-uint dbScanInst::getBits() const
+uint32_t dbScanInst::getBits() const
 {
   _dbScanInst* scan_inst = (_dbScanInst*) this;
   return scan_inst->bits_;
@@ -172,16 +181,6 @@ std::variant<dbBTerm*, dbITerm*> dbScanInst::getScanEnable() const
   const dbScanPin* scan_enable = (dbScanPin*) dft->scan_pins_->getPtr(
       (dbId<_dbScanPin>) scan_inst->scan_enable_);
   return scan_enable->getPin();
-}
-
-std::string_view getName(odb::dbBTerm* bterm)
-{
-  return bterm->getConstName();
-}
-
-std::string_view getName(odb::dbITerm* iterm)
-{
-  return iterm->getMTerm()->getConstName();
 }
 
 void dbScanInst::setAccessPins(const AccessPins& access_pins)
@@ -255,7 +254,7 @@ dbScanInst* dbScanInst::create(dbScanList* scan_list, dbInst* inst)
 {
   _dbBlock* block = (_dbBlock*) ((_dbInst*) inst)->getOwner();
   _dbScanInst* scan_inst = (_dbScanInst*) block->scan_inst_tbl_->create();
-  odb::uint inst_id = ((_dbInst*) inst)->getId();
+  uint32_t inst_id = ((_dbInst*) inst)->getId();
   scan_inst->inst_ = (dbId<dbInst>) inst_id;
   block->inst_scan_inst_map_[(dbId<_dbInst>) inst_id] = scan_inst->getId();
   return (dbScanInst*) scan_inst;

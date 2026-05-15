@@ -7,9 +7,9 @@
 #include <cstdint>
 #include <cstring>
 
+#include "dbCore.h"
 #include "dbDatabase.h"
 #include "dbTable.h"
-#include "dbTable.hpp"
 #include "odb/db.h"
 // User Code Begin Includes
 #include "dbTech.h"
@@ -21,6 +21,7 @@ template class dbTable<_dbTechLayerSpacingEolRule>;
 bool _dbTechLayerSpacingEolRule::operator==(
     const _dbTechLayerSpacingEolRule& rhs) const
 {
+  // NOLINTBEGIN(readability-simplify-boolean-expr)
   if (flags_.exact_width_valid != rhs.flags_.exact_width_valid) {
     return false;
   }
@@ -250,6 +251,7 @@ bool _dbTechLayerSpacingEolRule::operator==(
   }
 
   return true;
+  // NOLINTEND(readability-simplify-boolean-expr)
 }
 
 bool _dbTechLayerSpacingEolRule::operator<(
@@ -1452,14 +1454,14 @@ dbTechLayerSpacingEolRule* dbTechLayerSpacingEolRule::create(
 {
   _dbTechLayer* layer = (_dbTechLayer*) _layer;
   _dbTechLayerSpacingEolRule* newrule = layer->spacing_eol_rules_tbl_->create();
-  newrule->_layer = _layer->getImpl()->getOID();
+  newrule->layer_ = _layer->getImpl()->getOID();
 
   return ((dbTechLayerSpacingEolRule*) newrule);
 }
 
 dbTechLayerSpacingEolRule*
 dbTechLayerSpacingEolRule::getTechLayerSpacingEolRule(dbTechLayer* inly,
-                                                      uint dbid)
+                                                      uint32_t dbid)
 {
   _dbTechLayer* layer = (_dbTechLayer*) inly;
   return (dbTechLayerSpacingEolRule*) layer->spacing_eol_rules_tbl_->getPtr(

@@ -8,11 +8,9 @@ or_integration_tests(
     names
     net_name_consistency
     coordinates
+    no_merging
   PASSFAIL_TESTS
     rcx_unit_test
 )
 
-# Skipped
 #generate_rules
-#rcx_man_tcl_check
-#rcx_readme_msgs_check

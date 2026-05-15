@@ -9,9 +9,9 @@
 #include <map>
 #include <string>
 
+#include "dbCore.h"
 #include "dbDatabase.h"
 #include "dbTable.h"
-#include "dbTable.hpp"
 #include "dbTechLayer.h"
 #include "odb/db.h"
 namespace odb {
@@ -19,6 +19,7 @@ template class dbTable<_dbTechLayerMinCutRule>;
 
 bool _dbTechLayerMinCutRule::operator==(const _dbTechLayerMinCutRule& rhs) const
 {
+  // NOLINTBEGIN(readability-simplify-boolean-expr)
   if (flags_.per_cut_class != rhs.flags_.per_cut_class) {
     return false;
   }
@@ -69,6 +70,7 @@ bool _dbTechLayerMinCutRule::operator==(const _dbTechLayerMinCutRule& rhs) const
   }
 
   return true;
+  // NOLINTEND(readability-simplify-boolean-expr)
 }
 
 bool _dbTechLayerMinCutRule::operator<(const _dbTechLayerMinCutRule& rhs) const
@@ -128,7 +130,7 @@ void _dbTechLayerMinCutRule::collectMemInfo(MemInfo& info)
   info.size += sizeof(*this);
 
   // User Code Begin collectMemInfo
-  info.children_["cut_class_cuts_map"].add(cut_class_cuts_map_);
+  info.children["cut_class_cuts_map"].add(cut_class_cuts_map_);
   // User Code End collectMemInfo
 }
 
@@ -363,7 +365,7 @@ bool dbTechLayerMinCutRule::isFullyEnclosed() const
 
 // User Code Begin dbTechLayerMinCutRulePublicMethods
 
-void dbTechLayerMinCutRule::setCutsPerCutClass(std::string cut_class,
+void dbTechLayerMinCutRule::setCutsPerCutClass(const std::string& cut_class,
                                                int num_cuts)
 {
   _dbTechLayerMinCutRule* obj = (_dbTechLayerMinCutRule*) this;
@@ -379,7 +381,7 @@ dbTechLayerMinCutRule* dbTechLayerMinCutRule::create(dbTechLayer* inly)
 
 dbTechLayerMinCutRule* dbTechLayerMinCutRule::getTechLayerMinCutRule(
     dbTechLayer* inly,
-    uint dbid)
+    uint32_t dbid)
 {
   _dbTechLayer* layer = (_dbTechLayer*) inly;
   return ((dbTechLayerMinCutRule*) layer->min_cuts_rules_tbl_->getPtr(dbid));

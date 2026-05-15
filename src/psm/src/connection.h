@@ -8,6 +8,7 @@
 #include <set>
 #include <string>
 #include <tuple>
+#include <vector>
 
 #include "node.h"
 
@@ -83,13 +84,11 @@ class Connection
   Node* node1_;
 
  private:
-  using CompareInformation
-      = std::tuple<Node::CompareInformation, Node::CompareInformation>;
-  CompareInformation compareTuple() const;
-
   template <typename T>
   bool hasNodeOfType() const;
 };
+
+using Connections = std::vector<std::unique_ptr<Connection>>;
 
 class LayerConnection : public Connection
 {

@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
@@ -34,21 +35,19 @@ class ViaGenerator;
 
 using ViaPtr = std::shared_ptr<Via>;
 
-using uint = odb::uint;
-
 using ViaReport = std::map<std::string, int>;
 
 class Grid;
 class TechLayer;
 
-enum class failedViaReason
+enum class FailedViaReason
 {
-  OBSTRUCTED,
-  OVERLAPPING,
-  BUILD,
-  RIPUP,
-  RECHECK,
-  OTHER
+  kObstructed,
+  kOverlapping,
+  kBuild,
+  kRipup,
+  kRecheck,
+  kOther
 };
 
 class Enclosure
@@ -147,9 +146,21 @@ class DbBaseVia : public DbVia
   virtual std::string getName() const = 0;
   virtual odb::Rect getViaRect(bool include_enclosure,
                                bool include_via_shape,
-                               bool include_bottom = true,
-                               bool include_top = true) const
+                               bool include_bottom,
+                               bool include_top) const
       = 0;
+
+  odb::Rect getViaRect(bool include_enclosure,
+                       bool include_via_shape,
+                       bool include_bottom) const
+  {
+    return getViaRect(
+        include_enclosure, include_via_shape, include_bottom, true);
+  }
+  odb::Rect getViaRect(bool include_enclosure, bool include_via_shape) const
+  {
+    return getViaRect(include_enclosure, include_via_shape, true);
+  }
 
   int getCount() const { return count_; }
 
@@ -188,8 +199,9 @@ class DbTechVia : public DbBaseVia
   std::string getName() const override;
   odb::Rect getViaRect(bool include_enclosure,
                        bool include_via_shape,
-                       bool include_bottom = true,
-                       bool include_top = true) const override;
+                       bool include_bottom,
+                       bool include_top) const override;
+  using DbBaseVia::getViaRect;
 
  private:
   odb::dbTechVia* via_;
@@ -244,8 +256,9 @@ class DbGenerateVia : public DbBaseVia
   std::string getName() const override;
   odb::Rect getViaRect(bool include_enclosure,
                        bool include_via_shape,
-                       bool include_bottom = true,
-                       bool include_top = true) const override;
+                       bool include_bottom,
+                       bool include_top) const override;
+  using DbBaseVia::getViaRect;
 
  private:
   odb::Rect rect_;
@@ -435,9 +448,9 @@ class ViaGenerator
   int getCutPitchX() const { return cut_pitch_x_; }
   void setCutPitchY(int pitch) { cut_pitch_y_ = pitch; }
   int getCutPitchY() const { return cut_pitch_y_; }
-  void setCutOffsetX(int pitch) { cut_offset_y_ = pitch; }
-  int getCutOffsetX() const { return cut_offset_y_; }
-  void setCutOffsetY(int pitch) { cut_offset_y_ = pitch; }
+  void setCutOffsetX(int offset) { cut_offset_x_ = offset; }
+  int getCutOffsetX() const { return cut_offset_x_; }
+  void setCutOffsetY(int offset) { cut_offset_y_ = offset; }
   int getCutOffsetY() const { return cut_offset_y_; }
 
   void setMaxRows(int rows) { max_rows_ = rows; }
@@ -448,9 +461,10 @@ class ViaGenerator
 
   virtual bool isSetupValid(odb::dbTechLayer* lower,
                             odb::dbTechLayer* upper) const;
-  virtual bool checkConstraints(bool check_cuts = true,
-                                bool check_min_cut = true,
-                                bool check_enclosure = true) const;
+  virtual bool checkConstraints(bool check_cuts,
+                                bool check_min_cut,
+                                bool check_enclosure) const;
+  bool checkConstraints() const { return checkConstraints(true, true, true); }
 
   // determine the shape of the vias
   bool build(bool bottom_is_internal_layer, bool top_is_internal_layer);
@@ -630,7 +644,7 @@ class GenerateViaGenerator : public ViaGenerator
  private:
   odb::dbTechViaGenerateRule* rule_;
 
-  std::array<odb::uint, 3> layers_;
+  std::array<uint32_t, 3> layers_;
 
   bool isLayerValidForWidth(odb::dbTechViaLayerRule*, int width) const;
   bool getLayerEnclosureRule(odb::dbTechViaLayerRule* rule,
@@ -703,7 +717,7 @@ class Via
  public:
   struct ViaIndexableGetter
   {
-    using result_type = odb::Rect;
+    using result_type = odb::Rect;  // NOLINT(readability-identifier-naming)
     odb::Rect operator()(const ViaPtr& via) const { return via->getArea(); }
   };
   using ViaTree = bgi::rtree<ViaPtr, bgi::quadratic<16>, ViaIndexableGetter>;
@@ -743,7 +757,7 @@ class Via
 
   Via* copy() const;
 
-  void markFailed(failedViaReason reason);
+  void markFailed(FailedViaReason reason);
   bool isFailed() const { return failed_; }
 
   static ViaTree convertVectorToTree(std::vector<ViaPtr>& vec);

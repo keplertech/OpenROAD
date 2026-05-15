@@ -6,13 +6,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <cstdint>
 #include <iterator>
 #include <limits>
 #include <map>
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -195,9 +195,8 @@ void ICeWall::assignBump(odb::dbInst* inst,
       iterm->connect(net);
     }
     if (terminal) {
-      auto already_assigned = std::find_if(
-          routing_map_.begin(),
-          routing_map_.end(),
+      auto already_assigned = std::ranges::find_if(
+          routing_map_,
           [terminal](const auto& other) { return other.second == terminal; });
       if (already_assigned != routing_map_.end()) {
         logger_->error(
@@ -451,8 +450,7 @@ void ICeWall::makeIORow(odb::dbSite* horizontal_site,
   create_row(kRowNorth,
              vertical_site,
              x_sites,
-             {nw->getBBox().xMax(),
-              outer_io.yMax() - static_cast<int>(vertical_box.maxDXDY())},
+             {nw->getBBox().xMax(), outer_io.yMax() - vertical_box.maxDXDY()},
              north_rotation_ver,
              rotation_ver,
              odb::dbRowDir::HORIZONTAL,
@@ -460,8 +458,7 @@ void ICeWall::makeIORow(odb::dbSite* horizontal_site,
   create_row(kRowEast,
              horizontal_site,
              y_sites,
-             {outer_io.xMax() - static_cast<int>(horizontal_box.maxDXDY()),
-              se->getBBox().yMax()},
+             {outer_io.xMax() - horizontal_box.maxDXDY(), se->getBBox().yMax()},
              east_rotation_hor,
              rotation_hor,
              odb::dbRowDir::VERTICAL,
@@ -521,33 +518,6 @@ void ICeWall::placeCorner(odb::dbMaster* master, int ring_index)
 
     const odb::Rect row_bbox = row->getBBox();
 
-    // Check for instances overlapping the corner site
-    bool place_inst = true;
-    for (auto* check_inst : block->getInsts()) {
-      if (check_inst == inst) {
-        continue;
-      }
-      if (!check_inst->isFixed()) {
-        continue;
-      }
-      if (check_inst->getMaster()->isCover()) {
-        continue;
-      }
-      const odb::Rect check_rect = check_inst->getBBox()->getBox();
-      if (row_bbox.overlaps(check_rect)) {
-        place_inst = false;
-        break;
-      }
-    }
-    if (!place_inst) {
-      logger_->warn(
-          utl::PAD,
-          44,
-          "Skipping corner cell placement in {} due to overlapping instances",
-          row->getName());
-      continue;
-    }
-
     const bool create_inst = inst == nullptr;
     if (create_inst) {
       inst = odb::dbInst::create(block, master, corner_name.c_str());
@@ -557,20 +527,20 @@ void ICeWall::placeCorner(odb::dbMaster* master, int ring_index)
     inst->setLocation(row_bbox.xMin(), row_bbox.yMin());
     inst->setPlacementStatus(odb::dbPlacementStatus::FIRM);
 
-    const CheckerOnlyPadPlacer checker(logger_, block, row);
+    const CheckerOnlyPadPlacer checker(logger_, block, row, {inst});
     if (!checker.check(inst)) {
       if (create_inst) {
         logger_->warn(utl::PAD,
                       45,
                       "Skipping corner cell generation for {} due to "
-                      "overlapping bump cell",
+                      "overlapping instances",
                       inst->getName());
         odb::dbInst::destroy(inst);
       } else {
         logger_->warn(utl::PAD,
                       46,
                       "Skipping corner cell placement for {} due to "
-                      "overlapping bump cell",
+                      "overlapping instances",
                       inst->getName());
         inst->setPlacementStatus(odb::dbPlacementStatus::UNPLACED);
       }
@@ -764,6 +734,15 @@ void ICeWall::placePads(const std::vector<odb::dbInst*>& insts,
       break;
   }
 
+  if (logger_->debugCheck(utl::PAD, "Place", 2)) {
+    int idx = 0;
+    logger_->debug(
+        utl::PAD, "Place", "Pad placement order ({}):", insts.size());
+    for (auto* inst : insts) {
+      logger_->debug(utl::PAD, "Place", "  {:>5}: {}", ++idx, inst->getName());
+    }
+  }
+
   placer->place();
 
   logger_->info(
@@ -829,12 +808,10 @@ void ICeWall::placeFiller(
 
   std::vector<odb::dbMaster*> fillers = masters;
   // remove nullptrs
-  fillers.erase(std::remove(fillers.begin(), fillers.end(), nullptr),
-                fillers.end());
+  std::erase(fillers, nullptr);
   // sort by width
-  std::stable_sort(
-      fillers.begin(),
-      fillers.end(),
+  std::ranges::stable_sort(
+      fillers,
       [use_height, row_xform](odb::dbMaster* r, odb::dbMaster* l) -> bool {
         odb::Rect r_bbox;
         r->getPlacementBoundary(r_bbox);
@@ -925,10 +902,8 @@ void ICeWall::placeFiller(
 
     int site_offset = 0;
     for (auto* filler : fillers) {
-      const bool allow_overlap
-          = std::find(
-                overlapping_masters.begin(), overlapping_masters.end(), filler)
-            != overlapping_masters.end();
+      const bool allow_overlap = std::ranges::find(overlapping_masters, filler)
+                                 != overlapping_masters.end();
       odb::Rect filler_bbox;
       filler->getPlacementBoundary(filler_bbox);
       row_xform.apply(filler_bbox);
@@ -966,6 +941,10 @@ void ICeWall::placeFiller(
         if (sites <= 0) {
           break;
         }
+      }
+
+      if (sites <= 0) {
+        break;
       }
     }
 
@@ -1418,7 +1397,7 @@ std::vector<odb::dbInst*> ICeWall::getPadInstsInRow(odb::dbRow* row) const
   const odb::Rect row_bbox = row->getBBox();
 
   for (auto* inst : block->getInsts()) {
-    if (!inst->isPlaced()) {
+    if (!inst->isFixed()) {
       continue;
     }
 
@@ -1483,6 +1462,7 @@ void ICeWall::routeRDL(odb::dbTechLayer* layer,
                                         turn_penalty,
                                         max_iterations);
   router_->setRDLDebugNet(rdl_net_debug_);
+  router_->setRDLDebugPin(rdl_pin_debug_);
   if (router_gui_ != nullptr) {
     router_gui_->setRouter(router_.get());
   }
@@ -1521,6 +1501,20 @@ void ICeWall::routeRDLDebugNet(const char* net)
 
   if (router_ != nullptr) {
     router_->setRDLDebugNet(rdl_net_debug_);
+  }
+}
+
+void ICeWall::routeRDLDebugPin(const char* pin)
+{
+  auto* block = getBlock();
+  if (block == nullptr) {
+    return;
+  }
+
+  rdl_pin_debug_ = block->findITerm(pin);
+
+  if (router_ != nullptr) {
+    router_->setRDLDebugPin(rdl_pin_debug_);
   }
 }
 

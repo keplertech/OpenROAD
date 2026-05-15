@@ -8,9 +8,9 @@
 #include <cstring>
 #include <string>
 
+#include "dbCore.h"
 #include "dbDatabase.h"
 #include "dbTable.h"
-#include "dbTable.hpp"
 #include "dbTechLayer.h"
 #include "odb/db.h"
 namespace odb {
@@ -19,6 +19,7 @@ template class dbTable<_dbTechLayerEolKeepOutRule>;
 bool _dbTechLayerEolKeepOutRule::operator==(
     const _dbTechLayerEolKeepOutRule& rhs) const
 {
+  // NOLINTBEGIN(readability-simplify-boolean-expr)
   if (flags_.class_valid != rhs.flags_.class_valid) {
     return false;
   }
@@ -51,6 +52,7 @@ bool _dbTechLayerEolKeepOutRule::operator==(
   }
 
   return true;
+  // NOLINTEND(readability-simplify-boolean-expr)
 }
 
 bool _dbTechLayerEolKeepOutRule::operator<(
@@ -109,7 +111,7 @@ void _dbTechLayerEolKeepOutRule::collectMemInfo(MemInfo& info)
   info.size += sizeof(*this);
 
   // User Code Begin collectMemInfo
-  info.children_["class_name"].add(class_name_);
+  info.children["class_name"].add(class_name_);
   // User Code End collectMemInfo
 }
 
@@ -265,7 +267,7 @@ dbTechLayerEolKeepOutRule* dbTechLayerEolKeepOutRule::create(
 
 dbTechLayerEolKeepOutRule*
 dbTechLayerEolKeepOutRule::getTechLayerEolKeepOutRule(dbTechLayer* inly,
-                                                      uint dbid)
+                                                      uint32_t dbid)
 {
   _dbTechLayer* layer = (_dbTechLayer*) inly;
   return (dbTechLayerEolKeepOutRule*) layer->eol_keep_out_rules_tbl_->getPtr(

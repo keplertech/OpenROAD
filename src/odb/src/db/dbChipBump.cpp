@@ -5,22 +5,24 @@
 #include "dbChipBump.h"
 
 #include "dbChip.h"
+#include "dbCore.h"
 #include "dbDatabase.h"
 #include "dbInst.h"
 #include "dbTable.h"
-#include "dbTable.hpp"
 #include "odb/db.h"
 // User Code Begin Includes
 #include "dbBTerm.h"
 #include "dbBlock.h"
 #include "dbChipRegion.h"
 #include "dbNet.h"
+#include "utl/Logger.h"
 // User Code End Includes
 namespace odb {
 template class dbTable<_dbChipBump>;
 
 bool _dbChipBump::operator==(const _dbChipBump& rhs) const
 {
+  // NOLINTBEGIN(readability-simplify-boolean-expr)
   if (inst_ != rhs.inst_) {
     return false;
   }
@@ -38,6 +40,7 @@ bool _dbChipBump::operator==(const _dbChipBump& rhs) const
   }
 
   return true;
+  // NOLINTEND(readability-simplify-boolean-expr)
 }
 
 bool _dbChipBump::operator<(const _dbChipBump& rhs) const
@@ -103,8 +106,7 @@ dbInst* dbChipBump::getInst() const
   if (obj->inst_ == 0) {
     return nullptr;
   }
-  dbChip* chip = (dbChip*) getChip();
-  _dbBlock* block = (_dbBlock*) chip->getBlock();
+  _dbBlock* block = (_dbBlock*) getChip()->getBlock();
   return (dbInst*) block->inst_tbl_->getPtr(obj->inst_);
 }
 
@@ -114,8 +116,7 @@ dbNet* dbChipBump::getNet() const
   if (obj->net_ == 0) {
     return nullptr;
   }
-  dbChip* chip = (dbChip*) getChip();
-  _dbBlock* block = (_dbBlock*) chip->getBlock();
+  _dbBlock* block = (_dbBlock*) getChip()->getBlock();
   return (dbNet*) block->net_tbl_->getPtr(obj->net_);
 }
 
@@ -125,8 +126,7 @@ dbBTerm* dbChipBump::getBTerm() const
   if (obj->bterm_ == 0) {
     return nullptr;
   }
-  dbChip* chip = (dbChip*) getChip();
-  _dbBlock* block = (_dbBlock*) chip->getBlock();
+  _dbBlock* block = (_dbBlock*) getChip()->getBlock();
   return (dbBTerm*) block->bterm_tbl_->getPtr(obj->bterm_);
 }
 
@@ -140,6 +140,9 @@ void dbChipBump::setBTerm(dbBTerm* bterm)
 {
   _dbChipBump* obj = (_dbChipBump*) this;
   obj->bterm_ = bterm->getId();
+  _dbBTerm* _bterm = (_dbBTerm*) bterm;
+  _bterm->chip_region_ = obj->chip_region_;
+  _bterm->chip_bump_ = obj->getOID();
 }
 
 dbChipBump* dbChipBump::create(dbChipRegion* chip_region, dbInst* inst)

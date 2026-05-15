@@ -8,6 +8,7 @@ or_integration_tests(
     clock_route_alpha
     clock_route_error1
     clock_route_error2
+    colocated_pins
     congestion1
     congestion2
     congestion3
@@ -16,6 +17,7 @@ or_integration_tests(
     congestion6
     congestion7
     critical_nets_percentage
+    critical_nets_percentage_cugr
     cugr_adjustment1
     cugr_adjustment2
     cugr_adjustment3
@@ -23,11 +25,14 @@ or_integration_tests(
     est_rc2
     est_rc3
     est_rc4
+    est_rc_cugr1
     estimate_path_resistance
     gcd
     gcd_cugr
     gcd_flute
     increase_capacity1
+    incremental_update_net
+    infinite_cap
     inst_pin_out_of_die
     invalid_pin_placement
     invalid_routing_layer
@@ -45,7 +50,9 @@ or_integration_tests(
     pd3
     pd4
     pin_access1
+    pin_access1_cugr
     pin_access2
+    pin_access2_cugr
     pin_edge
     pin_track_not_aligned
     pre_routed1
@@ -67,6 +74,9 @@ or_integration_tests(
     repair_antennas4
     repair_antennas_error1
     repair_antennas_error2
+    repair_antennas_only_diodes
+    repair_antennas_only_jumpers
+    repair_antennas_allow_congestion
     report_wire_length1
     report_wire_length2
     report_wire_length3
@@ -90,8 +100,12 @@ or_integration_tests(
     upper_layer_net
     write_segments1
     write_segments2
+  PASSFAIL_TESTS
+    congestion_markers_cugr
+    congestion_report_file_cugr
+    snapshot_batched_bus_route
+    snapshot_batched_incremental_state
+    snapshot_batched_smoke
+    snapshot_batched_single_thread_smoke
+    thread_count_reports
 )
-
-# Skipped
-#grt_man_tcl_check
-#grt_readme_msgs_check

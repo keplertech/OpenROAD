@@ -34,10 +34,10 @@ void dbOStream::popScope()
     if (size >= 1024) {  // hide tiny contributors
       std::ostringstream scope_name;
 
-      std::transform(scopes_.begin(),
-                     scopes_.end(),
-                     std::ostream_iterator<std::string>(scope_name, "/"),
-                     [](const Scope& scope) { return scope.name; });
+      std::ranges::transform(
+          scopes_,
+          std::ostream_iterator<std::string>(scope_name, "/"),
+          [](const Scope& scope) { return scope.name; });
 
       logger->report("{:8.1f} MB in {}", size / 1048576.0, scope_name.str());
     }
@@ -117,6 +117,28 @@ dbIStream& operator>>(dbIStream& stream, Point3D& p)
   stream >> p.x_;
   stream >> p.y_;
   stream >> p.z_;
+  return stream;
+}
+
+dbOStream& operator<<(dbOStream& stream, const Cuboid& c)
+{
+  stream << c.xlo_;
+  stream << c.ylo_;
+  stream << c.zlo_;
+  stream << c.xhi_;
+  stream << c.yhi_;
+  stream << c.zhi_;
+  return stream;
+}
+
+dbIStream& operator>>(dbIStream& stream, Cuboid& c)
+{
+  stream >> c.xlo_;
+  stream >> c.ylo_;
+  stream >> c.zlo_;
+  stream >> c.xhi_;
+  stream >> c.yhi_;
+  stream >> c.zhi_;
   return stream;
 }
 

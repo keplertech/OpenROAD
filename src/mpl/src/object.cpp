@@ -24,7 +24,7 @@ namespace mpl {
 using utl::MPL;
 
 ///////////////////////////////////////////////////////////////////////
-// Metrics Class
+
 Metrics::Metrics(unsigned int num_std_cell,
                  unsigned int num_macro,
                  int64_t std_cell_area,
@@ -85,8 +85,7 @@ bool Metrics::empty() const
 }
 
 ///////////////////////////////////////////////////////////////////////
-// Cluster Class
-// Constructors and Destructors
+
 Cluster::Cluster(int cluster_id, utl::Logger* logger)
 {
   id_ = cluster_id;
@@ -102,7 +101,6 @@ Cluster::Cluster(int cluster_id,
   logger_ = logger;
 }
 
-// cluster id
 int Cluster::getId() const
 {
   return id_;
@@ -118,7 +116,6 @@ void Cluster::setName(const std::string& name)
   name_ = name;
 }
 
-// cluster type
 void Cluster::setClusterType(const ClusterType& cluster_type)
 {
   type_ = cluster_type;
@@ -129,7 +126,6 @@ ClusterType Cluster::getClusterType() const
   return type_;
 }
 
-// Instances (Here we store dbModule to reduce memory)
 void Cluster::addDbModule(odb::dbModule* db_module)
 {
   db_modules_.push_back(db_module);
@@ -249,15 +245,13 @@ std::string Cluster::getIsLeafString() const
   return is_leaf_string;
 }
 
-// copy instances based on cluster Type
 void Cluster::copyInstances(const Cluster& cluster)
 {
-  // clear firstly
   db_modules_.clear();
   leaf_std_cells_.clear();
   leaf_macros_.clear();
   hard_macros_.clear();
-  // insert new elements
+
   if (type_ == HardMacroCluster) {
     leaf_macros_.insert(leaf_macros_.end(),
                         cluster.leaf_macros_.begin(),
@@ -348,7 +342,6 @@ bool Cluster::correspondsToLogicalModule() const
          && (getDbModules().size() == 1);
 }
 
-// Metrics Support and Statistics
 void Cluster::setMetrics(const Metrics& metrics)
 {
   metrics_ = metrics;
@@ -402,7 +395,6 @@ int64_t Cluster::getMacroArea() const
   return metrics_.getMacroArea();
 }
 
-// Physical location support
 int Cluster::getWidth() const
 {
   if (!soft_macro_) {
@@ -472,7 +464,6 @@ odb::Point Cluster::getCenter() const
   return {getX() + (getWidth() / 2), getY() + (getHeight() / 2)};
 }
 
-// Hierarchy Support
 void Cluster::setParent(Cluster* parent)
 {
   parent_ = parent;
@@ -485,10 +476,9 @@ void Cluster::addChild(std::unique_ptr<Cluster> child)
 
 std::unique_ptr<Cluster> Cluster::releaseChild(const Cluster* candidate)
 {
-  auto it = std::find_if(
-      children_.begin(), children_.end(), [candidate](const auto& child) {
-        return child.get() == candidate;
-      });
+  auto it = std::ranges::find_if(children_, [candidate](const auto& child) {
+    return child.get() == candidate;
+  });
 
   if (it != children_.end()) {
     std::unique_ptr<Cluster> released_child = std::move(*it);
@@ -501,7 +491,7 @@ std::unique_ptr<Cluster> Cluster::releaseChild(const Cluster* candidate)
 
 void Cluster::addChildren(UniqueClusterVector children)
 {
-  std::move(children.begin(), children.end(), std::back_inserter(children_));
+  std::ranges::move(children, std::back_inserter(children_));
 }
 
 UniqueClusterVector Cluster::releaseChildren()
@@ -520,6 +510,15 @@ Cluster* Cluster::getParent() const
 const UniqueClusterVector& Cluster::getChildren() const
 {
   return children_;
+}
+
+std::vector<Cluster*> Cluster::getRawChildren() const
+{
+  std::vector<Cluster*> raw_children(children_.size());
+  std::ranges::transform(children_,
+                         raw_children.begin(),
+                         [](const auto& child) { return child.get(); });
+  return raw_children;
 }
 
 bool Cluster::isLeaf() const
@@ -561,7 +560,6 @@ bool Cluster::attemptMerge(Cluster* incomer, bool& incomer_deleted)
   return true;
 }
 
-// Connection signature support
 void Cluster::initConnection()
 {
   connections_map_.clear();
@@ -569,6 +567,15 @@ void Cluster::initConnection()
 
 void Cluster::addConnection(Cluster* cluster, const float connection_weight)
 {
+  if (connection_weight == 0.0) {
+    logger_->error(MPL,
+                   66,
+                   "Attempting to create connection with zero weight.\nCluster "
+                   "A: {}\nCluster B: {}",
+                   name_,
+                   cluster->getName());
+  }
+
   connections_map_[cluster->getId()] += connection_weight;
 }
 
@@ -582,7 +589,6 @@ const ConnectionsMap& Cluster::getConnectionsMap() const
   return connections_map_;
 }
 
-// Macro Placement Support
 void Cluster::setSoftMacro(std::unique_ptr<SoftMacro> soft_macro)
 {
   soft_macro_.reset();
@@ -604,7 +610,6 @@ const TilingList& Cluster::getTilings() const
   return tilings_;
 }
 
-// Virtual Connections
 std::vector<std::pair<int, int>> Cluster::getVirtualConnections() const
 {
   return virtual_connections_;
@@ -616,7 +621,7 @@ void Cluster::addVirtualConnection(int src, int target)
 }
 
 ///////////////////////////////////////////////////////////////////////
-// HardMacro
+
 HardMacro::HardMacro(const odb::Point& location,
                      const std::string& name,
                      int width,
@@ -642,23 +647,22 @@ HardMacro::HardMacro(int width, int height, const std::string& name)
   pin_y_ = height / 2;
 }
 
-HardMacro::HardMacro(odb::dbInst* inst, int halo_width, int halo_height)
+HardMacro::HardMacro(odb::dbInst* inst, Halo halo)
 {
   inst_ = inst;
   block_ = inst->getBlock();
   name_ = inst->getName();
 
-  halo_width_ = halo_width;
-  halo_height_ = halo_height;
+  halo_ = halo;
 
   odb::dbMaster* master = inst->getMaster();
-  width_ = master->getWidth() + 2 * halo_width;
-  height_ = master->getHeight() + 2 * halo_height;
+  width_ = master->getWidth() + halo_.left + halo_.right;
+  height_ = master->getHeight() + halo_.bottom + halo_.top;
 
   if (inst_->isFixed()) {
     const odb::Rect& box = inst->getBBox()->getBox();
-    x_ = box.xMin() - halo_width_;
-    y_ = box.yMin() - halo_height_;
+    x_ = box.xMin() - halo_.left;
+    y_ = box.yMin() - halo_.bottom;
     fixed_ = true;
   }
 
@@ -675,13 +679,10 @@ HardMacro::HardMacro(odb::dbInst* inst, int halo_width, int halo_height)
       }
     }
   }
-  pin_x_ = ((bbox.xMin() + bbox.xMax()) / 2) + halo_width_;
-  pin_y_ = ((bbox.yMin() + bbox.yMax()) / 2) + halo_height_;
+  pin_x_ = ((bbox.xMin() + bbox.xMax()) / 2) + (halo_.left + halo_.right) / 2;
+  pin_y_ = ((bbox.yMin() + bbox.yMax()) / 2) + (halo_.bottom + halo_.top) / 2;
 }
 
-// overload the comparison operators
-// based on area, width, height order
-// When we compare, we also consider the effect of halo_width
 bool HardMacro::operator<(const HardMacro& macro) const
 {
   if (getArea() != macro.getArea()) {
@@ -725,8 +726,6 @@ odb::Rect HardMacro::getBBox() const
   return odb::Rect(x_, y_, x_ + width_, y_ + height_);
 }
 
-// Get Physical Information
-// Note that the default X and Y include halo_width
 void HardMacro::setLocation(const odb::Point& location)
 {
   if (getArea() == 0) {
@@ -757,15 +756,14 @@ odb::Point HardMacro::getLocation() const
   return {x_, y_};
 }
 
-// Note that the real X and Y does NOT include halo_width
 void HardMacro::setRealLocation(const odb::Point& location)
 {
   if (getArea() == 0) {
     return;
   }
 
-  x_ = location.x() - halo_width_;
-  y_ = location.y() - halo_height_;
+  setRealX(location.x());
+  setRealY(location.y());
 }
 
 void HardMacro::setRealX(int x)
@@ -774,7 +772,14 @@ void HardMacro::setRealX(int x)
     return;
   }
 
-  x_ = x - halo_width_;
+  switch (getOrientation().getValue()) {
+    case odb::dbOrientType::Value::R180:
+    case odb::dbOrientType::Value::MY:
+      x_ = x - halo_.right;
+      break;
+    default:
+      x_ = x - halo_.left;
+  }
 }
 
 void HardMacro::setRealY(int y)
@@ -783,32 +788,51 @@ void HardMacro::setRealY(int y)
     return;
   }
 
-  y_ = y - halo_height_;
+  switch (getOrientation().getValue()) {
+    case odb::dbOrientType::Value::R180:
+    case odb::dbOrientType::Value::MX:
+      y_ = y - halo_.top;
+      break;
+    default:
+      y_ = y - halo_.bottom;
+  }
 }
 
 odb::Point HardMacro::getRealLocation() const
 {
-  return {x_ + halo_width_, y_ + halo_height_};
+  return {getRealX(), getRealY()};
 }
 
 int HardMacro::getRealX() const
 {
-  return x_ + halo_width_;
+  switch (getOrientation().getValue()) {
+    case odb::dbOrientType::Value::R180:
+    case odb::dbOrientType::Value::MY:
+      return x_ + halo_.right;
+    default:
+      return x_ + halo_.left;
+  }
 }
 
 int HardMacro::getRealY() const
 {
-  return y_ + halo_height_;
+  switch (getOrientation().getValue()) {
+    case odb::dbOrientType::Value::R180:
+    case odb::dbOrientType::Value::MX:
+      return y_ + halo_.top;
+    default:
+      return y_ + halo_.bottom;
+  }
 }
 
 int HardMacro::getRealWidth() const
 {
-  return width_ - 2 * halo_width_;
+  return width_ - halo_.left - halo_.right;
 }
 
 int HardMacro::getRealHeight() const
 {
-  return height_ - 2 * halo_height_;
+  return height_ - halo_.bottom - halo_.top;
 }
 
 int64_t HardMacro::getRealArea() const
@@ -816,13 +840,16 @@ int64_t HardMacro::getRealArea() const
   return getRealWidth() * static_cast<int64_t>(getRealHeight());
 }
 
-// Orientation support
+void HardMacro::setOrientation(const odb::dbOrientType& orient)
+{
+  orientation_ = orient;
+}
+
 odb::dbOrientType HardMacro::getOrientation() const
 {
   return orientation_;
 }
 
-// Interfaces with OpenDB
 odb::dbInst* HardMacro::getInst() const
 {
   return inst_;
@@ -890,7 +917,7 @@ SoftMacro::SoftMacro(const odb::Point& location,
 // Represent a fixed macro.
 SoftMacro::SoftMacro(utl::Logger* logger,
                      const HardMacro* hard_macro,
-                     const odb::Point* offset)
+                     const odb::Rect* outline)
 {
   if (!hard_macro->isFixed()) {
     logger->error(
@@ -902,29 +929,31 @@ SoftMacro::SoftMacro(utl::Logger* logger,
 
   name_ = hard_macro->getName();
 
-  x_ = hard_macro->getX();
-  y_ = hard_macro->getY();
+  odb::Rect shape;
+  odb::Rect hard_macro_bbox = hard_macro->getBBox();
 
-  if (offset) {
-    x_ += offset->x();
-    y_ += offset->y();
+  if (outline) {
+    hard_macro_bbox.intersection(*outline, shape);
+    shape.moveDelta(-outline->xMin(), -outline->yMin());
+  } else {
+    shape = hard_macro_bbox;
   }
 
-  width_ = hard_macro->getWidth();
-  height_ = hard_macro->getHeight();
-  area_ = width_ * static_cast<int64_t>(height_);
+  x_ = shape.xMin();
+  y_ = shape.yMin();
+  width_ = shape.dx();
+  height_ = shape.dy();
+  area_ = shape.area();
 
   cluster_ = hard_macro->getCluster();
   fixed_ = true;
 }
 
-// name
 const std::string& SoftMacro::getName() const
 {
   return name_;
 }
 
-// Physical Information
 void SoftMacro::setX(int x)
 {
   if (!fixed_) {
@@ -959,16 +988,12 @@ int SoftMacro::findIntervalIndex(const IntervalList& interval_list,
     while ((idx < interval_list.size()) && (interval_list[idx].max < value)) {
       idx++;
     }
-    if (interval_list[idx].min > value) {
-      value = interval_list[idx].min;
-    }
+    value = std::max(interval_list[idx].min, value);
   } else { /* Height Intervals */
     while ((idx < interval_list.size()) && (interval_list[idx].min > value)) {
       idx++;
     }
-    if (interval_list[idx].max < value) {
-      value = interval_list[idx].max;
-    }
+    value = std::min(interval_list[idx].max, value);
   }
   return idx;
 }
@@ -1103,9 +1128,9 @@ void SoftMacro::setShapes(const IntervalList& width_intervals, int64_t area)
 
   // Copy & sort the width intervals list.
   IntervalList old_width_intervals = width_intervals;
-  std::sort(old_width_intervals.begin(),
-            old_width_intervals.end(),
-            isMinWidthSmaller);
+  std::ranges::sort(old_width_intervals,
+
+                    isMinWidthSmaller);
 
   // Merge the overlapping intervals.
   for (auto& old_width_interval : old_width_intervals) {
@@ -1138,7 +1163,6 @@ odb::Rect SoftMacro::getBBox() const
   return odb::Rect(x_, y_, x_ + width_, y_ + height_);
 }
 
-// Num Macros
 bool SoftMacro::isMacroCluster() const
 {
   if (cluster_ == nullptr) {
@@ -1190,24 +1214,11 @@ bool SoftMacro::isBlockage() const
   return is_blockage_;
 }
 
-// Align Flag support
-void SoftMacro::setAlignFlag(bool flag)
-{
-  align_flag_ = flag;
-}
-
-bool SoftMacro::getAlignFlag() const
-{
-  return align_flag_;
-}
-
-// cluster
 Cluster* SoftMacro::getCluster() const
 {
   return cluster_;
 }
 
-// Calculate macro utilization
 float SoftMacro::getMacroUtil() const
 {
   if (cluster_ == nullptr || area_ == 0) {
@@ -1271,6 +1282,30 @@ void SoftMacro::setShapeF(int width, int height)
   width_ = width;
   height_ = height;
   area_ = width * static_cast<int64_t>(height);
+}
+
+void SoftMacro::reportShapeCurve(utl::Logger* logger) const
+{
+  logger->report("Name: {}", name_);
+  logger->report("Has Cluster: {}", cluster_ != nullptr);
+  if (cluster_) {
+    logger->report("Type: {}", cluster_->getClusterTypeString());
+  }
+
+  std::string widths_text, heights_text;
+
+  for (const Interval& width_interval : width_intervals_) {
+    widths_text
+        += fmt::format("\t{} -> {}", width_interval.min, width_interval.max);
+  }
+
+  for (const Interval& height_interval : height_intervals_) {
+    heights_text
+        += fmt::format("\t{} -> {}", height_interval.max, height_interval.min);
+  }
+
+  logger->report("Widths: {}", widths_text);
+  logger->report("Heights: {}\n", heights_text);
 }
 
 void Cluster::reportConnections() const

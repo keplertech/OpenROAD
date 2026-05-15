@@ -7,9 +7,9 @@
 #include <cstdint>
 #include <cstring>
 
+#include "dbCore.h"
 #include "dbDatabase.h"
 #include "dbTable.h"
-#include "dbTable.hpp"
 #include "dbTechLayer.h"
 #include "dbTechLayerCutClassRule.h"
 #include "odb/db.h"
@@ -19,6 +19,7 @@ template class dbTable<_dbTechLayerCutEnclosureRule>;
 bool _dbTechLayerCutEnclosureRule::operator==(
     const _dbTechLayerCutEnclosureRule& rhs) const
 {
+  // NOLINTBEGIN(readability-simplify-boolean-expr)
   if (flags_.type != rhs.flags_.type) {
     return false;
   }
@@ -147,6 +148,7 @@ bool _dbTechLayerCutEnclosureRule::operator==(
   }
 
   return true;
+  // NOLINTEND(readability-simplify-boolean-expr)
 }
 
 bool _dbTechLayerCutEnclosureRule::operator<(
@@ -471,14 +473,14 @@ int dbTechLayerCutEnclosureRule::getBelowEnclosure() const
   return obj->below_enclosure_;
 }
 
-void dbTechLayerCutEnclosureRule::setNumCorners(uint num_corners)
+void dbTechLayerCutEnclosureRule::setNumCorners(uint32_t num_corners)
 {
   _dbTechLayerCutEnclosureRule* obj = (_dbTechLayerCutEnclosureRule*) this;
 
   obj->num_corners_ = num_corners;
 }
 
-uint dbTechLayerCutEnclosureRule::getNumCorners() const
+uint32_t dbTechLayerCutEnclosureRule::getNumCorners() const
 {
   _dbTechLayerCutEnclosureRule* obj = (_dbTechLayerCutEnclosureRule*) this;
   return obj->num_corners_;
@@ -816,7 +818,7 @@ void dbTechLayerCutEnclosureRule::setType(ENC_TYPE type)
 {
   _dbTechLayerCutEnclosureRule* obj = (_dbTechLayerCutEnclosureRule*) this;
 
-  obj->flags_.type = (uint) type;
+  obj->flags_.type = (uint32_t) type;
 }
 
 dbTechLayerCutEnclosureRule::ENC_TYPE dbTechLayerCutEnclosureRule::getType()
@@ -837,7 +839,7 @@ dbTechLayerCutEnclosureRule* dbTechLayerCutEnclosureRule::create(
 
 dbTechLayerCutEnclosureRule*
 dbTechLayerCutEnclosureRule::getTechLayerCutEnclosureRule(dbTechLayer* inly,
-                                                          uint dbid)
+                                                          uint32_t dbid)
 {
   _dbTechLayer* layer = (_dbTechLayer*) inly;
   return (dbTechLayerCutEnclosureRule*) layer->cut_enc_rules_tbl_->getPtr(dbid);

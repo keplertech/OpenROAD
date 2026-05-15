@@ -20,6 +20,7 @@
 #include "db/drObj/drPin.h"
 #include "db/infra/frBox.h"
 #include "db/obj/frTrackPattern.h"
+#include "db/tech/frConstraint.h"
 #include "db/tech/frLayer.h"
 #include "db/tech/frTechObject.h"
 #include "dr/FlexMazeTypes.h"
@@ -128,15 +129,15 @@ class FlexGridGraph
 
   bool hasMazeXIdx(frCoord in) const
   {
-    return std::binary_search(xCoords_.begin(), xCoords_.end(), in);
+    return std::ranges::binary_search(xCoords_, in);
   }
   bool hasMazeYIdx(frCoord in) const
   {
-    return std::binary_search(yCoords_.begin(), yCoords_.end(), in);
+    return std::ranges::binary_search(yCoords_, in);
   }
   bool hasMazeZIdx(frLayerNum in) const
   {
-    return std::binary_search(zCoords_.begin(), zCoords_.end(), in);
+    return std::ranges::binary_search(zCoords_, in);
   }
   bool hasIdx(const odb::Point& p, frLayerNum lNum) const
   {
@@ -148,17 +149,17 @@ class FlexGridGraph
   }
   frMIdx getMazeXIdx(frCoord in) const
   {
-    auto it = std::lower_bound(xCoords_.begin(), xCoords_.end(), in);
+    auto it = std::ranges::lower_bound(xCoords_, in);
     return it - xCoords_.begin();
   }
   frMIdx getMazeYIdx(frCoord in) const
   {
-    auto it = std::lower_bound(yCoords_.begin(), yCoords_.end(), in);
+    auto it = std::ranges::lower_bound(yCoords_, in);
     return it - yCoords_.begin();
   }
   frMIdx getMazeZIdx(frLayerNum in) const
   {
-    auto it = std::lower_bound(zCoords_.begin(), zCoords_.end(), in);
+    auto it = std::ranges::lower_bound(zCoords_, in);
     return it - zCoords_.begin();
   }
   FlexMazeIdx& getMazeIdx(FlexMazeIdx& mIdx,
@@ -183,10 +184,8 @@ class FlexGridGraph
                  const odb::Rect& box,
                  getIdxBox_EnclosureType enclosureOption = uncertain) const
   {
-    mIdx1.set(std::lower_bound(xCoords_.begin(), xCoords_.end(), box.xMin())
-                  - xCoords_.begin(),
-              std::lower_bound(yCoords_.begin(), yCoords_.end(), box.yMin())
-                  - yCoords_.begin(),
+    mIdx1.set(std::ranges::lower_bound(xCoords_, box.xMin()) - xCoords_.begin(),
+              std::ranges::lower_bound(yCoords_, box.yMin()) - yCoords_.begin(),
               mIdx1.z());
     if (enclosureOption == 1) {
       if (xCoords_[mIdx1.x()] > box.xMin()) {
@@ -197,11 +196,9 @@ class FlexGridGraph
       }
     }
     const int ux
-        = std::upper_bound(xCoords_.begin(), xCoords_.end(), box.xMax())
-          - xCoords_.begin();
+        = std::ranges::upper_bound(xCoords_, box.xMax()) - xCoords_.begin();
     const int uy
-        = std::upper_bound(yCoords_.begin(), yCoords_.end(), box.yMax())
-          - yCoords_.begin();
+        = std::ranges::upper_bound(yCoords_, box.yMax()) - yCoords_.begin();
     mIdx2.set(
         frMIdx(std::max(0, ux - 1)), frMIdx(std::max(0, uy - 1)), mIdx2.z());
     if (enclosureOption == 2) {
@@ -281,7 +278,7 @@ class FlexGridGraph
         }
       }
     } else {
-      correctU(x, y, z, dir);
+      correct(x, y, z, dir);
       const Node& node = nodes_[getIdx(x, y, z)];
       if (isOverrideShapeCost(x, y, z, dir)) {
         sol = 0;
@@ -308,7 +305,7 @@ class FlexGridGraph
     if (dir != frDirEnum::D && dir != frDirEnum::U) {
       return false;
     }
-    correctU(x, y, z, dir);
+    correct(x, y, z, dir);
     auto idx = getIdx(x, y, z);
     return nodes_[idx].overrideShapeCostVia;
   }
@@ -330,7 +327,7 @@ class FlexGridGraph
         sol = nodes_[idx].routeShapeCostPlanar;
       }
     } else {
-      correctU(x, y, z, dir);
+      correct(x, y, z, dir);
       auto idx = getIdx(x, y, z);
       if (consider_ndr) {
         sol = std::max(nodes_[idx].routeShapeCostVia,
@@ -359,7 +356,7 @@ class FlexGridGraph
       auto idx = getIdx(x, y, z);
       sol += nodes_[idx].markerCostPlanar;
     } else {
-      correctU(x, y, z, dir);
+      correct(x, y, z, dir);
       auto idx = getIdx(x, y, z);
       sol += nodes_[idx].markerCostVia;
     }
@@ -639,16 +636,19 @@ class FlexGridGraph
           currCost *= d;
           currCost = std::max(0, currCost);
           node.markerCostPlanar = currCost;
+          break;
         case frDirEnum::N:
           currCost = node.markerCostPlanar;
           currCost *= d;
           currCost = std::max(0, currCost);
           node.markerCostPlanar = currCost;
+          break;
         case frDirEnum::U:
           currCost = node.markerCostVia;
           currCost *= d;
           currCost = std::max(0, currCost);
           node.markerCostVia = currCost;
+          break;
         default:;
       }
     }
@@ -836,7 +836,7 @@ class FlexGridGraph
     if (x2 < x1 || y2 < y1) {
       return;
     }
-    switch (getZDir(z)) {
+    switch (getZDir(z).getValue()) {
       case odb::dbTechLayerDir::HORIZONTAL:
         for (int i = y1; i <= y2; i++) {
           auto idx1 = getIdx(x1, i, z);
@@ -861,7 +861,7 @@ class FlexGridGraph
     if (x2 < x1 || y2 < y1) {
       return;
     }
-    switch (getZDir(z)) {
+    switch (getZDir(z).getValue()) {
       case odb::dbTechLayerDir::HORIZONTAL:
         for (int i = y1; i <= y2; i++) {
           auto idx1 = getIdx(x1, i, z);
@@ -1165,26 +1165,9 @@ class FlexGridGraph
   {
     switch (dir) {
       case frDirEnum::W:
-        x--;
-        dir = frDirEnum::E;
-        break;
       case frDirEnum::S:
-        y--;
-        dir = frDirEnum::N;
-        break;
       case frDirEnum::D:
-        z--;
-        dir = frDirEnum::U;
-        break;
-      default:;
-    }
-  }
-  void correctU(frMIdx& x, frMIdx& y, frMIdx& z, frDirEnum& dir) const
-  {
-    switch (dir) {
-      case frDirEnum::D:
-        z--;
-        dir = frDirEnum::U;
+        reverse(x, y, z, dir);
         break;
       default:;
     }
@@ -1232,11 +1215,8 @@ class FlexGridGraph
                    frDirEnum dir) const;
   bool isValid(frMIdx x, frMIdx y, frMIdx z) const
   {
-    if (x < 0 || y < 0 || z < 0 || x >= (frMIdx) xCoords_.size()
-        || y >= (frMIdx) yCoords_.size() || z >= (frMIdx) zCoords_.size()) {
-      return false;
-    }
-    return true;
+    return x >= 0 && y >= 0 && z >= 0 && x < (frMIdx) xCoords_.size()
+           && y < (frMIdx) yCoords_.size() && z < (frMIdx) zCoords_.size();
   }
   bool isValid(frMIdx x, frMIdx y, frMIdx z, frDirEnum dir) const
   {

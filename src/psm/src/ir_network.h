@@ -25,14 +25,14 @@ namespace psm {
 template <typename T>
 struct RectIndexableGetter
 {
-  using result_type = odb::Rect;
+  using result_type = odb::Rect;  // NOLINT(readability-identifier-naming)
   odb::Rect operator()(const T* t) const { return t->getShape(); }
 };
 
 template <typename T>
 struct PointIndexableGetter
 {
-  using result_type = odb::Point;
+  using result_type = odb::Point;  // NOLINT(readability-identifier-naming)
   odb::Point operator()(const T* t) const { return t->getPoint(); }
 };
 
@@ -44,10 +44,6 @@ class IRNetwork
 
   template <typename T>
   using LayerMap = std::map<odb::dbTechLayer*, T>;
-
-  using Point
-      = boost::geometry::model::d2::point_xy<int,
-                                             boost::geometry::cs::cartesian>;
 
   using TerminalTree
       = boost::geometry::index::rtree<TerminalNode*,
@@ -106,13 +102,13 @@ class IRNetwork
 
   std::size_t getNodeCount(bool include_iterms = false) const;
 
-  const std::vector<std::unique_ptr<Connection>>& getConnections() const
-  {
-    return connections_;
-  }
+  void clearVisitedNodes();
+
+  const Connections& getConnections() const { return connections_; }
   NodePtrMap<Connection> getConnectionMap() const;
 
   std::map<odb::dbInst*, Node::NodeSet> getInstanceNodeMapping() const;
+  ShapeTree getShapeTree(odb::dbTechLayer* layer) const;
 
   // For debug only
   void dumpNodes(const std::map<Node*, std::size_t>& node_map,
@@ -167,18 +163,16 @@ class IRNetwork
       std::vector<std::unique_ptr<Shape>>& new_shapes,
       std::vector<std::unique_ptr<Node>>& new_nodes,
       std::map<Shape*, std::set<Node*>>& terminal_connections);
-  void generateCutNodesForSBox(
-      odb::dbSBox* box,
-      bool single_via,
-      std::vector<std::unique_ptr<Node>>& new_nodes,
-      std::vector<std::unique_ptr<Connection>>& new_connections);
+  void generateCutNodesForSBox(odb::dbSBox* box,
+                               bool single_via,
+                               std::vector<std::unique_ptr<Node>>& new_nodes,
+                               Connections& new_connections);
   LayerMap<Polygon90Set> generatePolygonsFromBox(
       odb::dbBox* box,
       const odb::dbTransform& transform) const;
 
   TerminalTree getTerminalTree(
       const std::vector<TerminalNode*>& terminals) const;
-  ShapeTree getShapeTree(odb::dbTechLayer* layer) const;
   NodeTree getNodeTree(odb::dbTechLayer* layer) const;
 
   void initMinimumNodePitch();
@@ -196,7 +190,7 @@ class IRNetwork
   LayerMap<std::vector<std::unique_ptr<Shape>>> shapes_;
   LayerMap<std::vector<std::unique_ptr<Node>>> nodes_;
 
-  std::vector<std::unique_ptr<Connection>> connections_;
+  Connections connections_;
 
   std::vector<std::unique_ptr<ITermNode>> iterm_nodes_;
   std::vector<std::unique_ptr<BPinNode>> bpin_nodes_;

@@ -6,43 +6,35 @@
 #include <array>
 #include <map>
 #include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "odb/db.h"
 #include "utl/Logger.h"
 
 namespace pdn {
 
-using odb::dbBlock;
-using odb::dbBox;
-using odb::dbDatabase;
-using odb::dbGlobalConnect;
-using odb::dbInst;
-using odb::dbMaster;
-using odb::dbMTerm;
-using odb::dbNet;
-using odb::dbRegion;
-
-using utl::Logger;
-
 enum ExtensionMode
 {
-  CORE,
-  RINGS,
-  BOUNDARY,
-  FIXED
+  kCore,
+  kRings,
+  kBoundary,
+  kFixed
 };
 
 enum StartsWith
 {
-  GRID,
-  POWER,
-  GROUND
+  kGrid,
+  kPower,
+  kGround
 };
 
 enum PowerSwitchNetworkType
 {
-  STAR,
-  DAISY
+  kStar,
+  kDaisy
 };
 
 class VoltageDomain;
@@ -54,7 +46,7 @@ class SRoute;
 class PdnGen
 {
  public:
-  PdnGen(dbDatabase* db, Logger* logger);
+  PdnGen(odb::dbDatabase* db, utl::Logger* logger);
   ~PdnGen();
 
   void reset();
@@ -172,7 +164,7 @@ class PdnGen
   void repairVias(const std::set<odb::dbNet*>& nets);
 
   void createSrouteWires(const char* net,
-                         const char* outerNet,
+                         const char* outer_net,
                          odb::dbTechLayer* layer0,
                          odb::dbTechLayer* layer1,
                          int cut_pitch_x,
@@ -182,8 +174,8 @@ class PdnGen
                          int max_rows,
                          int max_columns,
                          const std::vector<odb::dbTechLayer*>& ongrid,
-                         std::vector<int> metalWidths,
-                         std::vector<int> metalspaces,
+                         const std::vector<int>& metal_widths,
+                         const std::vector<int>& metalspaces,
                          const std::vector<odb::dbInst*>& insts);
 
   PDNRenderer* getDebugRenderer() const { return debug_renderer_.get(); }
@@ -201,7 +193,7 @@ class PdnGen
   VoltageDomain* getCoreDomain() const;
   void ensureCoreDomain();
 
-  void updateRenderer() const;
+  void updateRenderer(bool reset) const;
 
   bool importUPF(VoltageDomain* domain);
   bool importUPF(Grid* grid, PowerSwitchNetworkType type) const;

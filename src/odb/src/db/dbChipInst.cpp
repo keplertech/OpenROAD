@@ -7,22 +7,28 @@
 #include <string>
 #include <unordered_map>
 
+#include "dbCore.h"
 #include "dbDatabase.h"
 #include "dbTable.h"
-#include "dbTable.hpp"
 #include "odb/db.h"
 // User Code Begin Includes
+#include <cstdint>
+
 #include "dbChip.h"
 #include "dbChipBumpInst.h"
 #include "dbChipRegionInst.h"
+#include "odb/dbSet.h"
 #include "odb/dbTransform.h"
+#include "odb/dbTypes.h"
 #include "odb/geom.h"
+#include "utl/Logger.h"
 // User Code End Includes
 namespace odb {
 template class dbTable<_dbChipInst>;
 
 bool _dbChipInst::operator==(const _dbChipInst& rhs) const
 {
+  // NOLINTBEGIN(readability-simplify-boolean-expr)
   if (name_ != rhs.name_) {
     return false;
   }
@@ -43,6 +49,7 @@ bool _dbChipInst::operator==(const _dbChipInst& rhs) const
   }
 
   return true;
+  // NOLINTEND(readability-simplify-boolean-expr)
 }
 
 bool _dbChipInst::operator<(const _dbChipInst& rhs) const
@@ -69,7 +76,7 @@ dbIStream& operator>>(dbIStream& stream, _dbChipInst& obj)
   stream >> obj.master_chip_;
   stream >> obj.parent_chip_;
   stream >> obj.chipinst_next_;
-  if (obj.getDatabase()->isSchema(db_schema_chip_region)) {
+  if (obj.getDatabase()->isSchema(kSchemaChipRegion)) {
     stream >> obj.chip_region_insts_;
   }
   return stream;
@@ -284,14 +291,14 @@ void dbChipInst::destroy(dbChipInst* chipInst)
   _dbDatabase* db = (_dbDatabase*) inst->getOwner();
 
   // remove regions
-  uint region_inst_id = inst->chip_region_insts_;
+  uint32_t region_inst_id = inst->chip_region_insts_;
   while (region_inst_id != 0) {
     _dbChipRegionInst* region_inst
         = db->chip_region_inst_tbl_->getPtr(region_inst_id);
     region_inst_id = region_inst->chip_region_inst_next_;
     db->chip_region_inst_tbl_->destroy(region_inst);
     // remove chipBumpInsts
-    uint bump_inst_id = region_inst->chip_bump_insts_;
+    uint32_t bump_inst_id = region_inst->chip_bump_insts_;
     while (bump_inst_id != 0) {
       _dbChipBumpInst* bump_inst
           = db->chip_bump_inst_tbl_->getPtr(bump_inst_id);
@@ -309,7 +316,7 @@ void dbChipInst::destroy(dbChipInst* chipInst)
     parent->chipinsts_ = inst->chipinst_next_;
   } else {
     // Find the previous node and unlink
-    uint prev_id = parent->chipinsts_;
+    uint32_t prev_id = parent->chipinsts_;
     while (prev_id != 0) {
       _dbChipInst* prev = db->chip_inst_tbl_->getPtr(prev_id);
       if (prev->chipinst_next_ == inst->getOID()) {

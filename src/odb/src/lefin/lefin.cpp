@@ -12,15 +12,19 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <mutex>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include "CellEdgeSpacingTableParser.h"
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
+#include "absl/synchronization/mutex.h"
 #include "lefLayerPropParser.h"
 #include "lefMacroPropParser.h"
 #include "lefiDebug.hpp"
+#include "lefiLayer.hpp"
+#include "lefiMisc.hpp"
 #include "lefiUtil.hpp"
 #include "lefrReader.hpp"
 #include "odb/db.h"
@@ -36,7 +40,7 @@ namespace odb {
 using LefParser::lefrSetRelaxMode;
 
 // Protects the LefParser namespace that has static variables
-std::mutex lefin::lef_mutex_;
+ABSL_CONST_INIT absl::Mutex lefin::lef_mutex_(absl::kConstInit);
 
 extern bool lefin_parse(lefinReader*, utl::Logger*, const char*);
 
@@ -260,7 +264,7 @@ bool lefinReader::addGeoms(dbObject* object,
         for (j = 0; j < pathItr->numPoints; j++) {
           int x = dbdist(pathItr->x[j]);
           int y = dbdist(pathItr->y[j]);
-          points.push_back(Point(x, y));
+          points.emplace_back(x, y);
         }
 
         int numX = lround(pathItr->xStart);
@@ -475,7 +479,7 @@ void lefinReader::createPolygon(dbObject* object,
   for (int j = 0; j < p->numPoints; ++j) {
     int x = dbdist(p->x[j] + offset_x);
     int y = dbdist(p->y[j] + offset_y);
-    points.push_back(Point(x, y));
+    points.emplace_back(x, y);
   }
 
   dbPolygon* pbox = nullptr;
@@ -702,6 +706,17 @@ void lefinReader::layer(LefParser::lefiLayer* layer)
                          "LEF58_TWOWIRESFORBIDDENSPACING")) {
         lefTechLayerTwoWiresForbiddenSpcRuleParser parser(this);
         parser.parse(layer->propValue(iii), l);
+      } else if (!strcmp(layer->propName(iii), "LEF58_MINWIDTH")) {
+        MinWidthParser parser(l, this);
+        parser.parse(layer->propValue(iii));
+      } else if (!strcmp(layer->propName(iii), "LEF57_ANTENNAGATEPLUSDIFF")
+                 || !strcmp(layer->propName(iii),
+                            "LEF58_ANTENNAGATEPLUSDIFF")) {
+        AntennaGatePlusDiffParser parser(l, this);
+        parser.parse(layer->propValue(iii));
+      } else if (!strcmp(layer->propName(iii), "LEF58_VOLTAGESPACING")) {
+        lefTechLayerVoltageSpacing parser(l, this);
+        parser.parse(layer->propValue(iii));
       } else {
         supported = false;
       }
@@ -732,12 +747,24 @@ void lefinReader::layer(LefParser::lefiLayer* layer)
       } else if (!strcmp(layer->propName(iii), "LEF58_MAXSPACING")) {
         MaxSpacingParser parser(l, this);
         parser.parse(layer->propValue(iii));
+      } else if (!strcmp(layer->propName(iii), "LEF57_ANTENNAGATEPLUSDIFF")
+                 || !strcmp(layer->propName(iii),
+                            "LEF58_ANTENNAGATEPLUSDIFF")) {
+        AntennaGatePlusDiffParser parser(l, this);
+        parser.parse(layer->propValue(iii));
       } else {
         supported = false;
       }
     } else if (type.getValue() == dbTechLayerType::MASTERSLICE) {
       if (!strcmp(layer->propName(iii), "LEF58_TYPE")) {
         valid = lefTechLayerTypeParser::parse(layer->propValue(iii), l, this);
+      } else {
+        supported = false;
+      }
+    } else if (type.getValue() == dbTechLayerType::IMPLANT) {
+      if (!strcmp(layer->propName(iii), "LEF58_AREA")) {
+        lefTechLayerAreaRuleParser parser(this);
+        parser.parse(layer->propValue(iii), l, incomplete_props_);
       } else {
         supported = false;
       }
@@ -772,10 +799,15 @@ void lefinReader::layer(LefParser::lefiLayer* layer)
     l->setWidth(dbdist(layer->width()));
   }
 
-  if (layer->hasMinwidth()) {
-    l->setMinWidth(dbdist(layer->minwidth()));
-  } else if (type == dbTechLayerType::ROUTING) {
-    l->setMinWidth(l->getWidth());
+  if (l->getMinWidth() == 0) {
+    if (layer->hasMinwidth()) {
+      l->setMinWidth(dbdist(layer->minwidth()));
+    } else if (type == dbTechLayerType::ROUTING) {
+      l->setMinWidth(l->getWidth());
+    }
+  }
+  if (l->getWrongWayMinWidth() == 0) {
+    l->setWrongWayMinWidth(l->getWrongWayWidth());
   }
 
   if (layer->hasOffset()) {
@@ -984,8 +1016,7 @@ void lefinReader::layer(LefParser::lefiLayer* layer)
 
   if (layer->numAntennaModel() > 0) {
     for (j = 0; j < std::min(layer->numAntennaModel(), 2); j++) {
-      cur_ant_rule = (j == 1) ? l->createOxide2AntennaRule()
-                              : l->createDefaultAntennaRule();
+      cur_ant_rule = l->getOrCreateAntennaModel(/*oxide_idx=*/j + 1);
       cur_model = layer->antennaModel(j);
       if (cur_model->hasAntennaAreaFactor()) {
         cur_ant_rule->setAreaFactor(cur_model->antennaAreaFactor(),
@@ -1456,7 +1487,7 @@ void lefinReader::nonDefault(LefParser::lefiNonDefault* rule)
 
 void lefinReader::obstruction(LefParser::lefiObstruction* obs)
 {
-  if ((master_ == nullptr) || (skip_obstructions_ == true)) {
+  if ((master_ == nullptr) || (skip_obstructions_)) {
     return;
   }
 
@@ -1761,7 +1792,8 @@ void lefinReader::site(LefParser::lefiSite* lefsite)
   }
 
   for (dbLib* lib : db_->getLibs()) {
-    if ((site = lib->findSite(lefsite->name()))) {
+    site = lib->findSite(lefsite->name());
+    if (site) {
       logger_->info(utl::ODB,
                     394,
                     "Duplicate site {} in {} already seen in {}",
@@ -1820,7 +1852,7 @@ void lefinReader::spacingBegin(void* /* unused: ptr */)
 
 void lefinReader::spacing(LefParser::lefiSpacing* spacing)
 {
-  if (create_tech_ == false) {
+  if (!create_tech_) {
     return;
   }
 
@@ -2566,13 +2598,13 @@ int lefin::dbdist(double value)
 
 dbTech* lefin::createTech(const char* name, const char* lef_file)
 {
-  std::lock_guard<std::mutex> lock(lef_mutex_);
+  absl::MutexLock lock(&lef_mutex_);
   return reader_->createTech(name, lef_file);
 }
 
 dbLib* lefin::createLib(dbTech* tech, const char* name, const char* lef_file)
 {
-  std::lock_guard<std::mutex> lock(lef_mutex_);
+  absl::MutexLock lock(&lef_mutex_);
   return reader_->createLib(tech, name, lef_file);
 }
 
@@ -2580,25 +2612,25 @@ dbLib* lefin::createTechAndLib(const char* tech_name,
                                const char* lib_name,
                                const char* lef_file)
 {
-  std::lock_guard<std::mutex> lock(lef_mutex_);
+  absl::MutexLock lock(&lef_mutex_);
   return reader_->createTechAndLib(tech_name, lib_name, lef_file);
 }
 
 bool lefin::updateLib(dbLib* lib, const char* lef_file)
 {
-  std::lock_guard<std::mutex> lock(lef_mutex_);
+  absl::MutexLock lock(&lef_mutex_);
   return reader_->updateLib(lib, lef_file);
 }
 
 bool lefin::updateTech(dbTech* tech, const char* lef_file)
 {
-  std::lock_guard<std::mutex> lock(lef_mutex_);
+  absl::MutexLock lock(&lef_mutex_);
   return reader_->updateTech(tech, lef_file);
 }
 
 bool lefin::updateTechAndLib(dbLib* lib, const char* lef_file)
 {
-  std::lock_guard<std::mutex> lock(lef_mutex_);
+  absl::MutexLock lock(&lef_mutex_);
   return reader_->updateTechAndLib(lib, lef_file);
 }
 

@@ -12,6 +12,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -36,6 +37,8 @@ PadPlacer::PadPlacer(utl::Logger* logger,
 {
   populateInstWidths();
   populateObstructions();
+
+  addInstsOverlapCache(insts);
 }
 
 void PadPlacer::populateInstWidths()
@@ -397,8 +400,10 @@ void PadPlacer::populateObstructions()
           covers.insert(check_inst);
           continue;
         }
-        instance_obstructions_.insert(
-            {check_inst->getBBox()->getBox(), check_inst});
+
+        instance_obstructions_.insert({check_inst->getBBox()->getBox(),
+                                       getInstanceOutline(check_inst),
+                                       check_inst});
       }
     }
   }
@@ -410,9 +415,83 @@ void PadPlacer::populateObstructions()
   }
 }
 
+std::optional<odb::Polygon> PadPlacer::getMasterOutline(
+    odb::dbMaster* master) const
+{
+  std::vector<odb::Rect> master_obs;
+  for (auto* obs : master->getObstructions()) {
+    auto* layer = obs->getTechLayer();
+    if (layer != nullptr) {
+      if (layer->getType() != odb::dbTechLayerType::OVERLAP) {
+        continue;
+      }
+      master_obs.push_back(obs->getBox());
+    }
+  }
+
+  if (master_obs.empty()) {
+    return std::nullopt;
+  }
+
+  if (master_obs.size() == 1) {
+    return odb::Polygon(master_obs.front());
+  }
+
+  const auto overlaps = odb::Polygon::merge(master_obs);
+  if (overlaps.size() == 1) {
+    return overlaps.front();
+  }
+
+  return std::nullopt;
+}
+
+std::optional<odb::Polygon> PadPlacer::getInstanceOutline(
+    odb::dbInst* inst) const
+{
+  const auto checker = master_overlap_cache_.find(inst->getMaster());
+  if (checker != master_overlap_cache_.end()) {
+    if (!checker->second) {
+      return std::nullopt;
+    }
+
+    odb::Polygon poly = checker->second.value();
+    const odb::dbTransform xform = inst->getTransform();
+    xform.apply(poly);
+    return poly;
+  }
+
+  const auto master_outline = getMasterOutline(inst->getMaster());
+  if (!master_outline) {
+    return std::nullopt;
+  }
+
+  const odb::dbTransform xform = inst->getTransform();
+  odb::Polygon poly = master_outline.value();
+  xform.apply(poly);
+  return poly;
+}
+
+void PadPlacer::addInstsOverlapCache(const std::vector<odb::dbInst*>& insts)
+{
+  for (auto* inst : insts) {
+    addInstOverlapCache(inst);
+  }
+}
+
+void PadPlacer::addInstOverlapCache(odb::dbInst* inst)
+{
+  if (master_overlap_cache_.find(inst->getMaster())
+      != master_overlap_cache_.end()) {
+    return;
+  }
+  master_overlap_cache_[inst->getMaster()]
+      = getMasterOutline(inst->getMaster());
+}
+
 void PadPlacer::addInstanceObstructions(odb::dbInst* inst)
 {
-  instance_obstructions_.insert({inst->getBBox()->getBox(), inst});
+  instance_obstructions_.insert(
+      {inst->getBBox()->getBox(), getInstanceOutline(inst), inst});
   if (inst->getMaster()->isCover()) {
     for (const auto& [layer, shapes] : getInstanceObstructions(inst)) {
       term_obstructions_[layer].insert(shapes.begin(), shapes.end());
@@ -425,6 +504,8 @@ PadPlacer::checkInstancePlacement(odb::dbInst* inst,
                                   bool return_intersect) const
 {
   const odb::Rect inst_rect = inst->getBBox()->getBox();
+  const std::optional<odb::Polygon> inst_poly = getInstanceOutline(inst);
+
   for (auto itr = blockage_obstructions_.qbegin(
            boost::geometry::index::intersects(inst_rect));
        itr != blockage_obstructions_.qend();
@@ -445,10 +526,28 @@ PadPlacer::checkInstancePlacement(odb::dbInst* inst,
            boost::geometry::index::intersects(inst_rect));
        itr != instance_obstructions_.qend();
        itr++) {
-    const auto& [check_rect, check_inst] = *itr;
+    const auto& [check_rect, check_poly, check_inst] = *itr;
     if (check_rect.overlaps(inst_rect)) {
       if (check_inst == inst) {
         continue;
+      }
+      if (check_poly && inst_poly) {
+        // Both have overlap polygons, check them for a more accurate result
+        if (!boost::geometry::intersects(*check_poly, *inst_poly)) {
+          continue;
+        }
+      } else if (check_poly) {
+        // Only the obstruction has an overlap polygon, check it for a more
+        // accurate result
+        if (!boost::geometry::intersects(inst_rect, *check_poly)) {
+          continue;
+        }
+      } else if (inst_poly) {
+        // Only the instance has an overlap polygon, check it for a more
+        // accurate result
+        if (!boost::geometry::intersects(check_rect, *inst_poly)) {
+          continue;
+        }
       }
       debugPrint(getLogger(),
                  utl::PAD,
@@ -569,10 +668,12 @@ void UniformPadPlacer::place()
 
 ///////////////////////////////////////////
 
-CheckerOnlyPadPlacer::CheckerOnlyPadPlacer(utl::Logger* logger,
-                                           odb::dbBlock* block,
-                                           odb::dbRow* row)
-    : PadPlacer(logger, block, {}, odb::Direction2D::North, row)
+CheckerOnlyPadPlacer::CheckerOnlyPadPlacer(
+    utl::Logger* logger,
+    odb::dbBlock* block,
+    odb::dbRow* row,
+    const std::vector<odb::dbInst*>& insts)
+    : PadPlacer(logger, block, insts, odb::Direction2D::North, row)
 {
 }
 
@@ -914,7 +1015,7 @@ std::map<odb::dbInst*, int> PlacerPadPlacer::initialPoolMapping() const
 {
   const auto& insts = getInsts();
 
-  std::vector<float> position(insts.size());
+  std::vector<int> position(insts.size());
   for (int i = 0; i < insts.size(); i++) {
     odb::dbInst* inst = insts[i];
     if (ideal_positions_.find(inst) == ideal_positions_.end()) {
@@ -944,6 +1045,25 @@ std::map<odb::dbInst*, int> PlacerPadPlacer::initialPoolMapping() const
     odb::dbInst* inst = insts[i];
     mapping[inst] = position[i];
   }
+
+  if (getLogger()->debugCheck(utl::PAD, "PAVA", 2)) {
+    const double dbus = getBlock()->getDbUnitsPerMicron();
+    int idx = 0;
+    getLogger()->debug(utl::PAD, "PAVA", "Pool mapping ({}):", insts.size());
+    for (auto* inst : insts) {
+      getLogger()->debug(
+          utl::PAD,
+          "PAVA",
+          "  {:>5}: {} at {:.4f}um (ideal: {})",
+          ++idx,
+          inst->getName(),
+          mapping[inst] / dbus,
+          ideal_positions_.find(inst) == ideal_positions_.end()
+              ? "N/A"
+              : fmt::format("{:.4f}um", ideal_positions_.at(inst) / dbus));
+    }
+  }
+
   return mapping;
 }
 
@@ -1090,9 +1210,9 @@ std::map<odb::dbInst*, int> PlacerPadPlacer::poolAdjacentViolators(
   const double dbus = getBlock()->getDbUnitsPerMicron();
   const auto& insts = getInsts();
   std::vector<float> weights(insts.size());
-  std::fill(weights.begin(), weights.end(), 1.0);
+  std::ranges::fill(weights, 1.0);
 
-  std::vector<float> position(insts.size());
+  std::vector<int> position(insts.size());
   for (int i = 0; i < insts.size(); i++) {
     odb::dbInst* inst = insts[i];
     position[i] = initial_positions.at(inst);
@@ -1105,8 +1225,8 @@ std::map<odb::dbInst*, int> PlacerPadPlacer::poolAdjacentViolators(
 
     // Run PAVA
     for (int i = 1; i < insts.size(); i++) {
-      float current_pos = position[i];
-      float previous_pos = position[i - 1];
+      const int current_pos = position[i];
+      const int previous_pos = position[i - 1];
 
       if (current_pos >= previous_pos) {
         continue;
@@ -1115,9 +1235,9 @@ std::map<odb::dbInst*, int> PlacerPadPlacer::poolAdjacentViolators(
       updated = true;
       // Calculate new value
       const float total_weight = weights[i] + weights[i - 1];
-      const float pooled_value
-          = (weights[i] * current_pos + weights[i - 1] * previous_pos)
-            / total_weight;
+      const int pooled_value = std::round(
+          (weights[i] * current_pos + weights[i - 1] * previous_pos)
+          / total_weight);
 
       // Update positions
       position[i] = pooled_value;
@@ -1144,7 +1264,7 @@ std::map<odb::dbInst*, int> PlacerPadPlacer::poolAdjacentViolators(
 
     // Check for legal positions
     for (int i = 0; i < insts.size(); i++) {
-      int pos = position[i];
+      const int pos = position[i];
       odb::dbInst* inst = insts[i];
       const int legal_pos = getNearestLegalPosition(inst, pos);
       if (legal_pos != pos) {

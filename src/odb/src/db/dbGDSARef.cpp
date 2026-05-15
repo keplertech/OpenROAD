@@ -9,19 +9,21 @@
 #include <utility>
 #include <vector>
 
+#include "dbCore.h"
 #include "dbDatabase.h"
 #include "dbTable.h"
-#include "dbTable.hpp"
 #include "odb/db.h"
 #include "odb/dbTypes.h"
 // User Code Begin Includes
 #include "dbGDSLib.h"
+#include "odb/geom.h"
 // User Code End Includes
 namespace odb {
 template class dbTable<_dbGDSARef>;
 
 bool _dbGDSARef::operator==(const _dbGDSARef& rhs) const
 {
+  // NOLINTBEGIN(readability-simplify-boolean-expr)
   if (origin_ != rhs.origin_) {
     return false;
   }
@@ -42,6 +44,7 @@ bool _dbGDSARef::operator==(const _dbGDSARef& rhs) const
   }
 
   return true;
+  // NOLINTEND(readability-simplify-boolean-expr)
 }
 
 bool _dbGDSARef::operator<(const _dbGDSARef& rhs) const
@@ -87,9 +90,9 @@ void _dbGDSARef::collectMemInfo(MemInfo& info)
   info.size += sizeof(*this);
 
   // User Code Begin collectMemInfo
-  info.children_["propattr"].add(propattr_);
+  info.children["propattr"].add(propattr_);
   for (auto& [i, s] : propattr_) {
-    info.children_["propattr"].add(s);
+    info.children["propattr"].add(s);
   }
   // User Code End collectMemInfo
 }

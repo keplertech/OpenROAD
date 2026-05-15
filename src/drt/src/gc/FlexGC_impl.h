@@ -16,6 +16,7 @@
 #include "db/gcObj/gcShape.h"
 #include "db/obj/frBlockObject.h"
 #include "db/obj/frMarker.h"
+#include "db/tech/frConstraint.h"
 #include "db/tech/frLayer.h"
 #include "db/tech/frTechObject.h"
 #include "dr/FlexDR.h"
@@ -85,12 +86,11 @@ class FlexGCWorker::Impl
        FlexGCWorker* gcWorkerIn);
   frLayerNum getMinLayerNum()  // inclusive
   {
-    return std::max((frLayerNum) (getTech()->getBottomLayerNum()),
-                    minLayerNum_);
+    return std::max(getTech()->getBottomLayerNum(), minLayerNum_);
   }
   frLayerNum getMaxLayerNum()  // inclusive
   {
-    return std::min((frLayerNum) (getTech()->getTopLayerNum()), maxLayerNum_);
+    return std::min(getTech()->getTopLayerNum(), maxLayerNum_);
   }
   gcNet* addNet(frBlockObject* owner = nullptr)
   {
@@ -164,6 +164,7 @@ class FlexGCWorker::Impl
   FlexGCWorkerRegionQuery& getWorkerRegionQuery() { return rq_; }
 
   void modifyMarkers();
+  void normalizeMarkerOrder();
   // init
   gcNet* getNet(frBlockObject* obj);
   gcNet* getNet(frNet* net);

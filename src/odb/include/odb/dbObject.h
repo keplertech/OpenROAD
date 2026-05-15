@@ -3,9 +3,8 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
-
-#include "odb/odb.h"
 
 namespace utl {
 class Logger;
@@ -33,7 +32,6 @@ class _dbObject;
 ///
 enum dbObjectType
 {
-
   // Design Objects
   dbGdsLibObj,
   dbBlockObj,
@@ -68,6 +66,7 @@ enum dbObjectType
   dbChipConnObj,
   dbChipInstObj,
   dbChipNetObj,
+  dbChipPathObj,
   dbChipRegionObj,
   dbChipRegionInstObj,
   dbDatabaseObj,
@@ -124,13 +123,13 @@ enum dbObjectType
   dbTechLayerSpacingEolRuleObj,
   dbTechLayerSpacingTablePrlRuleObj,
   dbTechLayerTwoWiresForbiddenSpcRuleObj,
+  dbTechLayerVoltageSpacingObj,
   dbTechLayerWidthTableRuleObj,
   dbTechLayerWrongDirSpacingRuleObj,
   // Generator Code End DbObjectType
 
   // Lib Objects
   dbLibObj,
-  dbGDSLibObj,
   dbSiteObj,
   dbMasterObj,
   dbMPinObj,
@@ -163,7 +162,7 @@ class dbObject
  public:
   dbObjectType getObjectType() const;
   dbDatabase* getDb() const;
-  uint getId() const;
+  uint32_t getId() const;
   const char* getTypeName() const;
   std::string getName() const;
   bool isValid() const;
